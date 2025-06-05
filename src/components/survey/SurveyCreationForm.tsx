@@ -1,3 +1,4 @@
+
 // @/components/survey/SurveyCreationForm.tsx
 "use client";
 
@@ -32,29 +33,41 @@ const questionSchema = z.object({
 });
 
 const surveyCreationSchema = z.object({
-  title: z.string().min(5, "Title must be at least 5 characters."),
+  title: z.string().min(5, "Title must be at least 5 characters.").optional(), // Title is optional initially
   description: z.string().optional(),
   surveyType: z.enum(["single-card", "card-deck", "add-to-existing"], {
     required_error: "Please select a survey type.",
   }),
   questions: z.array(questionSchema).min(1, "Survey must have at least one question."),
   privacy: z.enum(["public", "invite-only"]).optional(),
-}).refine(data => {
-  if (data.surveyType === "card-deck" && !data.privacy) {
-    return false; 
+}).superRefine((data, ctx) => {
+  if (data.surveyType === "card-deck") {
+    if (!data.title) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Survey title is required for Card Decks.",
+        path: ["title"],
+      });
+    }
+    if (!data.privacy) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Privacy setting is required for Card Decks.",
+        path: ["privacy"],
+      });
+    }
   }
-  return true;
-}, {
-  message: "Privacy setting is required for Card Decks.",
-  path: ["privacy"],
-}).refine(data => {
-  if (data.surveyType === "single-card" && data.questions.length !== 1) {
-    return false;
+  if (data.surveyType === "single-card") {
+    if (data.questions.length !== 1) {
+       ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Single Card surveys must have exactly one question.",
+        path: ["questions"],
+      });
+    }
+    // For single-card, title is not collected via form, so no validation here for title.
+    // Description is optional for single-card.
   }
-  return true;
-}, {
-  message: "Single Card surveys must have exactly one question.",
-  path: ["questions"], 
 });
 
 type SurveyCreationValues = z.infer<typeof surveyCreationSchema>;
@@ -90,23 +103,29 @@ export default function SurveyCreationForm() {
   }, [user, authLoading, router]);
   
   useEffect(() => {
-    // When surveyType changes to 'single-card' and there's more than one question, remove extras.
-    if (watchedSurveyType === "single-card" && fields.length > 1) {
-      // Keep only the first question
-      for (let i = fields.length - 1; i > 0; i--) {
-        remove(i);
+    if (watchedSurveyType === "single-card") {
+      if (fields.length > 1) {
+        for (let i = fields.length - 1; i > 0; i--) {
+          remove(i);
+        }
+      }
+      if (fields.length === 0) { // Ensure there's always one question for single-card type if empty
+        append({ text: "", type: "text", options: [] });
+      }
+      form.setValue("privacy", undefined); 
+      // Title is not for single cards, so we can clear it if user switches
+      // form.setValue("title", ""); // Or let it be, validation will handle for card-deck
+    } else if (watchedSurveyType === "card-deck") {
+      // If switching to card-deck and no privacy is set, default it (already handled by defaultValues)
+      if (!form.getValues("privacy")) {
+        form.setValue("privacy", "public");
       }
     }
-    // If survey type is 'single-card', ensure privacy is not set or is public
-    if (watchedSurveyType === "single-card") {
-        form.setValue("privacy", undefined); // Or "public", depending on backend expectation
-    }
-  }, [watchedSurveyType, fields.length, remove, form]);
+  }, [watchedSurveyType, fields.length, remove, append, form]);
 
 
   function addOption(questionIndex: number) {
     const options = form.getValues(`questions.${questionIndex}.options`) || [];
-    // Using update from useFieldArray to ensure re-render
     const currentQuestion = fields[questionIndex];
     update(questionIndex, { ...currentQuestion, options: [...options, ""] });
   }
@@ -127,6 +146,11 @@ export default function SurveyCreationForm() {
         toast({ title: "Feature Not Implemented", description: "'Add to Existing Deck' is coming soon!", variant: "default" });
         return;
     }
+    if (data.surveyType === "single-card") {
+        // For single card, title is not submitted from form. Can be handled by backend or derived.
+        data.title = undefined; 
+    }
+
 
     setFormProcessing(true);
     console.log("Survey data:", data);
@@ -135,7 +159,7 @@ export default function SurveyCreationForm() {
     setFormProcessing(false);
     toast({
       title: "Survey Created!",
-      description: `Your survey "${data.title}" has been successfully created.`,
+      description: `Your survey has been successfully created.`,
     });
     router.push("/dashboard");
   }
@@ -159,37 +183,10 @@ export default function SurveyCreationForm() {
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
             <FormField
               control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Survey Title</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Customer Feedback Survey" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description (Optional)</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Briefly describe your survey." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="surveyType"
               render={({ field }) => (
                 <FormItem className="space-y-3">
-                  <FormLabel>Survey Type</FormLabel>
+                  <FormLabel>1. What type of survey are you creating?</FormLabel>
                   <FormControl>
                     <RadioGroup
                       onValueChange={field.onChange}
@@ -201,7 +198,7 @@ export default function SurveyCreationForm() {
                           <RadioGroupItem value="single-card" />
                         </FormControl>
                         <FormLabel className="font-normal">
-                          Single Card (one question, shared publicly)
+                          Single Card (one question, shared publicly, no title needed)
                         </FormLabel>
                       </FormItem>
                       <FormItem className="flex items-center space-x-3 space-y-0">
@@ -209,7 +206,7 @@ export default function SurveyCreationForm() {
                           <RadioGroupItem value="card-deck" />
                         </FormControl>
                         <FormLabel className="font-normal">
-                          Card Deck (a series of questions)
+                          Card Deck (a series of questions, requires a title)
                         </FormLabel>
                       </FormItem>
                       <FormItem className="flex items-center space-x-3 space-y-0">
@@ -226,6 +223,36 @@ export default function SurveyCreationForm() {
                 </FormItem>
               )}
             />
+
+            {watchedSurveyType === "card-deck" && (
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>2. Survey Title (for Card Deck)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Customer Feedback Survey" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{watchedSurveyType === "card-deck" ? "3.": "2."} Description (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Briefly describe your survey or the single card's purpose." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             
             {watchedSurveyType === "card-deck" && (
               <FormField
@@ -233,7 +260,7 @@ export default function SurveyCreationForm() {
                 name="privacy"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Privacy Settings (for Card Deck)</FormLabel>
+                    <FormLabel>4. Privacy Settings (for Card Deck)</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value || "public"}>
                       <FormControl>
                         <SelectTrigger>
@@ -254,27 +281,28 @@ export default function SurveyCreationForm() {
               />
             )}
 
-
             <div>
-              <FormLabel className="text-lg font-medium">Questions</FormLabel>
+              <FormLabel className="text-lg font-medium">
+                {watchedSurveyType === "single-card" ? "3. Your Question" : 
+                 watchedSurveyType === "card-deck" ? "5. Questions" : "Questions"}
+              </FormLabel>
               {fields.map((field, index) => (
                 <Card key={field.id} className="mt-4 p-4 space-y-4 bg-muted/50 border relative">
                   <div className="flex items-center justify-between">
-                     <FormLabel className="text-md">Question {index + 1}</FormLabel>
-                     <div className="flex items-center gap-2">
-                        {(fields.length > 1 || watchedSurveyType !== "single-card") && (
-                          <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => remove(index)} 
-                            className="text-destructive/80 hover:text-destructive"
-                            disabled={watchedSurveyType === "single-card" && fields.length <= 1}
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </Button>
-                        )}
-                     </div>
+                     <FormLabel className="text-md">
+                       {watchedSurveyType === "single-card" ? "Question Content" : `Question ${index + 1}`}
+                     </FormLabel>
+                     {watchedSurveyType !== "single-card" && fields.length > 1 && (
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => remove(index)} 
+                          className="text-destructive/80 hover:text-destructive"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </Button>
+                     )}
                   </div>
                   <FormField
                     control={form.control}
@@ -337,19 +365,24 @@ export default function SurveyCreationForm() {
                   )}
                 </Card>
               ))}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => append({ text: "", type: "text", options: [] })}
-                disabled={watchedSurveyType === "single-card" && fields.length >= 1}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Question
-              </Button>
+              {watchedSurveyType !== "single-card" && watchedSurveyType !== "add-to-existing" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => append({ text: "", type: "text", options: [] })}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add Question
+                </Button>
+              )}
             </div>
 
-            <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={formProcessing || authLoading || watchedSurveyType === "add-to-existing"}>
+            <Button 
+                type="submit" 
+                className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" 
+                disabled={formProcessing || authLoading || watchedSurveyType === "add-to-existing"}
+            >
              {formProcessing ? "Creating Survey..." : "Create Survey"}
             </Button>
           </form>
@@ -358,3 +391,4 @@ export default function SurveyCreationForm() {
     </Card>
   );
 }
+
