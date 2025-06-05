@@ -67,11 +67,7 @@ export default function DashboardClient() {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold font-headline text-primary">My Dashboard</h1>
-        <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
-          <Link href="/survey/create">
-            <PlusCircle className="mr-2 h-5 w-5" /> Create New Survey
-          </Link>
-        </Button>
+        {/* Button removed from here */}
       </div>
 
       {/* Stats Overview */}
@@ -174,6 +170,17 @@ export default function DashboardClient() {
           )}
         </CardContent>
       </Card>
+
+      {/* Floating Action Button */}
+      <Button
+        asChild
+        className="fixed bottom-6 right-6 md:bottom-8 md:right-8 z-50 h-16 w-16 rounded-full p-0 shadow-xl bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center"
+        aria-label="Create New Survey"
+      >
+        <Link href="/survey/create">
+          <PlusCircle className="h-8 w-8" />
+        </Link>
+      </Button>
     </div>
   );
 }
