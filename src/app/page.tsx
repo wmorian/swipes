@@ -38,7 +38,7 @@ export default function HomePage() {
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
 
   const fetchSurveyData = async () => {
-    if (!user) { // Ensure user is available before fetching
+    if (!user) { 
       setIsLoading(false);
       return;
     }
@@ -177,6 +177,8 @@ export default function HomePage() {
       if (actualSurveyStatChangesMade || Object.keys(finalSurveyUpdates).length > 1) { 
           await updateDoc(surveyRef, finalSurveyUpdates);
       } else if (!actualSurveyStatChangesMade && existingUserInteraction) { 
+          // If stats didn't change but there was an existing interaction (e.g. user re-confirmed answer or re-skipped), 
+          // we still want to update the userSurveyAnswer's timestamp, so proceed to that, but only touch survey's updatedAt.
           await updateDoc(surveyRef, { updatedAt: serverTimestamp() });
       }
 
@@ -317,9 +319,6 @@ export default function HomePage() {
   const currentUserInitialAnswer = userCardInteractions[currentSurvey?.id]?.answerValue;
 
   if (!currentSurvey || !currentQuestion) {
-    // This case might be hit briefly during loading or if publicCards is empty
-    // but `allCardsViewed` hasn't been set yet.
-    // The primary loading and empty states are handled above.
     return <div className="text-center py-10 text-muted-foreground">Loading card data or no question available...</div>;
   }
 
@@ -334,15 +333,9 @@ export default function HomePage() {
         )}
         <SurveyCard
           question={currentQuestion}
-          questionNumber={currentCardIndex + 1} // Use currentCardIndex for question number
-          totalQuestions={publicCards.length} // Total public cards
+          questionNumber={currentCardIndex + 1}
+          totalQuestions={publicCards.length}
           onNext={handleCardInteractionCompletion} 
-          onPrevious={() => {
-            // This 'previous' would conceptually go to a previous *card* in the public feed
-            // Not typically used in this Tinder-style card flow for the homepage.
-            // If needed, would involve decrementing currentCardIndex and clearing statsForCard.
-          }} 
-          isFirstQuestion={currentCardIndex === 0}
           isLastQuestion={currentCardIndex === publicCards.length - 1}
           initialAnswer={currentUserInitialAnswer}
         />

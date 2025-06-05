@@ -9,15 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect } from "react";
 import type { Question } from "@/types"; // Assuming Question type definition
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronRight, SkipForward } from "lucide-react";
 
 interface SurveyCardProps {
   question: Question;
   questionNumber: number;
   totalQuestions: number;
-  onNext: (answer?: any) => void; // Changed: now accepts optional answer
-  onPrevious: () => void;
-  isFirstQuestion: boolean;
+  onNext: (answer?: any) => void;
   isLastQuestion: boolean;
   initialAnswer?: string | undefined | null;
 }
@@ -27,8 +25,6 @@ export default function SurveyCard({
   questionNumber,
   totalQuestions,
   onNext,
-  onPrevious,
-  isFirstQuestion,
   isLastQuestion,
   initialAnswer,
 }: SurveyCardProps) {
@@ -48,18 +44,18 @@ export default function SurveyCard({
     }
   }, [initialAnswer, question.id, question.type]);
 
-  const handleNextInternal = () => { // Renamed to avoid confusion with onNext prop
+  const handleNextInternal = () => {
     let answer;
     if (question.type === "multiple-choice" || question.type === "rating") {
       answer = selectedValue;
     } else if (question.type === "text") {
       answer = textAnswer;
     }
-    onNext(answer); // Pass the answer directly
+    onNext(answer);
   };
 
-  const handlePrevious = () => {
-    onPrevious();
+  const handleSkip = () => {
+    onNext(undefined); // Signal a skip by passing undefined
   }
 
   const renderQuestionInput = () => {
@@ -112,8 +108,8 @@ export default function SurveyCard({
         {renderQuestionInput()}
       </CardContent>
       <CardFooter className="flex justify-between">
-        <Button variant="outline" onClick={handlePrevious} disabled={isFirstQuestion}>
-          <ChevronLeft className="mr-2 h-4 w-4" /> Previous
+        <Button variant="outline" onClick={handleSkip}>
+          <SkipForward className="mr-2 h-4 w-4" /> Skip
         </Button>
         <Button onClick={handleNextInternal} className="bg-accent hover:bg-accent/90 text-accent-foreground">
           {isLastQuestion ? "Finish" : "Next"} <ChevronRight className="ml-2 h-4 w-4" />

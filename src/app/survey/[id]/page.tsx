@@ -1,3 +1,4 @@
+
 // @/app/survey/[id]/page.tsx
 "use client";
 
@@ -59,45 +60,33 @@ export default function TakeSurveyPage() {
     }
   }, [surveyId]);
 
-  const handleAnswer = (answer: any) => {
+  const handleAnswerSubmission = (answer: any) => { // Renamed from handleAnswer for clarity
     if (survey && survey.questions) {
       const questionId = survey.questions[currentQuestionIndex].id;
       setAnswers(prev => ({ ...prev, [questionId]: answer }));
     }
   };
 
-  const handleNext = () => {
+  const handleNext = (answer?: any) => { // Now accepts answer directly
+    if (answer !== undefined && survey && survey.questions) { // If an answer was provided, record it
+        const questionId = survey.questions[currentQuestionIndex].id;
+        setAnswers(prev => ({ ...prev, [questionId]: answer }));
+    }
+    // If answer is undefined, it's a skip (or no input on text), just proceed.
+
     if (survey && survey.questions && currentQuestionIndex < survey.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
-      console.log("Final Answers:", answers);
+      console.log("Final Answers:", answers); // Note: answers state might not include the *very last* answer due to async nature if not recorded above.
       setSurveyCompleted(true);
       // In a real app, submit answers to backend here
       // If user is logged in, associate answers with user.id
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(prev => prev - 1);
     }
   };
   
   if (authLoading || surveyLoading) {
     return <div className="text-center py-10">Loading survey...</div>;
   }
-
-  // Example: If a survey is 'Invite-Only' and user is not logged in or not invited, show message.
-  // This logic would need actual data and potentially more context.
-  // For now, we assume public surveys are accessible.
-  // if (survey?.privacy === 'Invite-Only' && !user) {
-  //   return (
-  //     <div className="text-center py-10">
-  //       This survey is invite-only. Please <Link href={`/login?redirect=/survey/${surveyId}`}>login</Link> to participate if you have been invited.
-  //     </div>
-  //   );
-  // }
-
 
   if (!survey || !survey.questions) {
     return <div className="text-center py-10">Survey not found or failed to load.</div>;
@@ -135,11 +124,9 @@ export default function TakeSurveyPage() {
         question={currentQuestion}
         questionNumber={currentQuestionIndex + 1}
         totalQuestions={survey.questions.length}
-        onAnswer={handleAnswer}
-        onNext={handleNext}
-        onPrevious={handlePrevious}
-        isFirstQuestion={currentQuestionIndex === 0}
+        onNext={handleNext} // Pass the combined handler
         isLastQuestion={currentQuestionIndex === survey.questions.length - 1}
+        // initialAnswer can be passed here if fetching user's previous answers for this survey
       />
     </div>
   );

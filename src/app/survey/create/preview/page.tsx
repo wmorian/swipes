@@ -21,10 +21,10 @@ export default function CreateSurveyPreviewPage() {
   const { surveyData, setCurrentStep, resetSurveyCreation } = useSurveyCreation();
   const { toast } = useToast();
   const [isPublishing, setIsPublishing] = useState(false);
-  const [isRedirectingAfterPublish, setIsRedirectingAfterPublish] = useState(false); // New state
+  const [isRedirectingAfterPublish, setIsRedirectingAfterPublish] = useState(false);
 
   useEffect(() => {
-    if (isRedirectingAfterPublish) { // If redirecting after successful publish, bail out.
+    if (isRedirectingAfterPublish) { 
       return;
     }
 
@@ -33,7 +33,7 @@ export default function CreateSurveyPreviewPage() {
       return;
     }
 
-    if (isPublishing) { // If currently in the process of publishing, bail out.
+    if (isPublishing) { 
         return;
     }
 
@@ -95,7 +95,7 @@ export default function CreateSurveyPreviewPage() {
         description: `Your single card survey has been created. ID: ${docRef.id}`,
         variant: "default"
       });
-      setIsRedirectingAfterPublish(true); // Set flag before reset and navigation
+      setIsRedirectingAfterPublish(true); 
       resetSurveyCreation(); 
       router.push(user ? `/dashboard?newSurveyId=${docRef.id}` : `/`);
     } catch (error) {
@@ -105,7 +105,7 @@ export default function CreateSurveyPreviewPage() {
         description: "Could not publish your survey card. Please try again.",
         variant: "destructive"
       });
-      setIsPublishing(false); // Reset publishing state on error
+      setIsPublishing(false); 
     }
   };
 
@@ -146,10 +146,7 @@ export default function CreateSurveyPreviewPage() {
               question={surveyCardQuestion}
               questionNumber={1}
               totalQuestions={1} 
-              onAnswer={() => {}} 
               onNext={() => { alert("This is a static preview. Navigation is disabled.")}} 
-              onPrevious={() => {alert("This is a static preview. Navigation is disabled.")}}
-              isFirstQuestion={true}
               isLastQuestion={true}
             />
           ) : (
