@@ -10,10 +10,9 @@ import { Label } from "@/components/ui/label";
 import { useSurveyCreation, type SurveyQuestionContext } from "@/context/SurveyCreationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ArrowLeft, ArrowRight, PlusCircle, Trash2, XCircle } from 'lucide-react';
-import SurveyCard from "@/components/survey/SurveyCard";
-import type { Question as SurveyCardQuestion } from "@/types"; // For SurveyCard props
+// SurveyCard import is no longer needed here for live preview
 import { useToast } from "@/hooks/use-toast";
 
 export default function CreateSurveyQuestionsPage() {
@@ -73,16 +72,16 @@ export default function CreateSurveyQuestionsPage() {
     }
     for (const q of surveyData.questions) {
         if (!q.text.trim()) {
-            toast({ title: "Incomplete Question", description: `Question "${q.id}" is missing text.`, variant: "destructive"});
+            toast({ title: "Incomplete Question", description: `Question text for "${q.id.substring(0,10)}..." is missing.`, variant: "destructive"});
             return false;
         }
         if (q.options.length === 0) {
-            toast({ title: "No Options", description: `Question "${q.text || q.id}" has no options.`, variant: "destructive"});
+            toast({ title: "No Options", description: `Question "${q.text || q.id.substring(0,10)}" has no options.`, variant: "destructive"});
             return false;
         }
         for (const opt of q.options) {
             if (!opt.trim()) {
-                toast({ title: "Empty Option", description: `Question "${q.text || q.id}" has an empty option.`, variant: "destructive"});
+                toast({ title: "Empty Option", description: `Question "${q.text || q.id.substring(0,10)}" has an empty option.`, variant: "destructive"});
                 return false;
             }
         }
@@ -103,13 +102,6 @@ export default function CreateSurveyQuestionsPage() {
     router.push("/survey/create");
   };
   
-  const mapContextQuestionToSurveyCardQuestion = (cq: SurveyQuestionContext): SurveyCardQuestion => ({
-    id: cq.id,
-    text: cq.text || "Preview Question Text...",
-    type: cq.type,
-    options: cq.options.map(opt => opt || "Option"),
-  });
-
   if (authLoading || (!user && !authLoading)) {
     return <div className="text-center py-10">{authLoading ? "Loading question editor..." : "Redirecting to login..."}</div>;
   }
@@ -117,7 +109,6 @@ export default function CreateSurveyQuestionsPage() {
   if (!surveyData.surveyType) {
      return <div className="text-center py-10">Loading configuration...</div>;
   }
-
 
   return (
     <Card className="w-full max-w-3xl mx-auto shadow-xl">
@@ -189,22 +180,7 @@ export default function CreateSurveyQuestionsPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Option
               </Button>
             </div>
-
-            <div className="mt-6">
-              <Label className="text-md font-medium block mb-2 text-center text-muted-foreground">Live Preview</Label>
-              <div className="w-full bg-muted p-3 rounded-lg shadow-inner">
-                 <SurveyCard
-                    question={mapContextQuestionToSurveyCardQuestion(question)}
-                    questionNumber={1} 
-                    totalQuestions={1}
-                    onAnswer={() => {}} 
-                    onNext={() => {}} 
-                    onPrevious={() => {}}
-                    isFirstQuestion={true}
-                    isLastQuestion={true}
-                  />
-              </div>
-            </div>
+            {/* Removed live preview section */}
           </Card>
         ))}
 
