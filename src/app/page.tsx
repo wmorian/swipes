@@ -1,88 +1,181 @@
 // @/app/page.tsx
+"use client";
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, Zap, Users } from 'lucide-react';
-import Image from 'next/image';
-import Link from 'next/link';
+import SurveyCard from '@/components/survey/SurveyCard';
+import type { Survey, Question } from '@/types';
+import { useAuth } from '@/context/AuthContext'; // Optional: if auth state influences UI
+import { ArrowRight, RefreshCw } from 'lucide-react';
+
+// Mock data for public single-card surveys
+const mockPublicCardsData: Survey[] = [
+  {
+    id: 'pub-card-101',
+    title: '', // Single cards don't have titles in the survey object itself
+    description: 'Quick poll: Morning person or night owl?',
+    surveyType: 'single-card',
+    questions: [
+      { id: 'q-pc101', text: 'Are you more of a morning person or a night owl?', type: 'multiple-choice', options: ['Morning Person', 'Night Owl', 'Both equally', 'Neither'] }
+    ],
+    questionCount: 1,
+    responses: 120, // Example response count
+    status: 'Active',
+    privacy: 'Public',
+  },
+  {
+    id: 'pub-card-102',
+    title: '',
+    description: 'Let\'s talk about coffee!',
+    surveyType: 'single-card',
+    questions: [
+      { id: 'q-pc102', text: 'How do you take your coffee?', type: 'multiple-choice', options: ['Black', 'With milk/cream', 'With sugar', 'With milk & sugar', 'I prefer tea'] }
+    ],
+    questionCount: 1,
+    responses: 250,
+    status: 'Active',
+    privacy: 'Public',
+  },
+  {
+    id: 'pub-card-103',
+    title: '',
+    description: 'A question about your favorite way to unwind.',
+    surveyType: 'single-card',
+    questions: [
+      { id: 'q-pc103', text: 'Favorite way to unwind after a long day?', type: 'multiple-choice', options: ['Reading a book', 'Watching TV/Movies', 'Exercising', 'Listening to music', 'Spending time with loved ones'] }
+    ],
+    questionCount: 1,
+    responses: 180,
+    status: 'Active',
+    privacy: 'Public',
+  },
+];
 
 export default function HomePage() {
+  const { user } = useAuth(); // Get user if needed for other UI elements
+  const [publicCards, setPublicCards] = useState<Survey[]>([]);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, any>>({}); // Stores { questionId: answer }
+  const [allCardsViewed, setAllCardsViewed] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate fetching public cards
+    setTimeout(() => {
+      setPublicCards(mockPublicCardsData);
+      setIsLoading(false);
+      if (mockPublicCardsData.length === 0) {
+        setAllCardsViewed(true);
+      }
+    }, 500);
+  }, []);
+
+  const handleAnswer = (answer: any) => {
+    if (publicCards.length > 0 && publicCards[currentCardIndex] && publicCards[currentCardIndex].questions) {
+      const currentQuestionId = publicCards[currentCardIndex].questions![0].id;
+      setAnswers(prev => ({ ...prev, [currentQuestionId]: answer }));
+    }
+  };
+
+  const handleNextPublicCard = () => {
+    if (publicCards.length === 0) return;
+
+    const currentSurvey = publicCards[currentCardIndex];
+    const currentQuestion = currentSurvey.questions?.[0];
+    
+    if (currentQuestion) {
+      const answerForCurrentCard = answers[currentQuestion.id];
+      console.log(`Answer for card ${currentSurvey.id} (Question ${currentQuestion.id}):`, answerForCurrentCard || "Skipped");
+      // Here you would typically submit the answer to your backend
+      // For example: submitAnswer(currentSurvey.id, currentQuestion.id, answerForCurrentCard);
+    }
+
+
+    if (currentCardIndex < publicCards.length - 1) {
+      setCurrentCardIndex(prevIndex => prevIndex + 1);
+      // Clear answer for the next card if needed, or let SurveyCard handle its own state reset
+    } else {
+      setAllCardsViewed(true);
+    }
+  };
+  
+  const resetCardView = () => {
+    setCurrentCardIndex(0);
+    setAllCardsViewed(false);
+    setAnswers({});
+    // Potentially re-fetch or re-shuffle cards here in a real app
+  }
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading public cards...</p></div>;
+  }
+
+  if (allCardsViewed || publicCards.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-10rem)] space-y-6">
+        <Card className="p-6 md:p-10 shadow-xl max-w-md">
+          <CardHeader>
+            <CardTitle className="text-2xl font-headline text-primary">
+              {publicCards.length === 0 ? "No Public Cards Yet!" : "You've Seen All Cards!"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CardDescription className="text-md mb-6">
+              {publicCards.length === 0 ? "Check back later for engaging public survey cards." : "Thanks for participating! Check back later for new cards."}
+            </CardDescription>
+            {publicCards.length > 0 && (
+                 <Button onClick={resetCardView} variant="outline" className="mb-4">
+                    <RefreshCw className="mr-2 h-4 w-4" /> View Again
+                </Button>
+            )}
+            <Button size="lg" asChild className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+              <Link href={user ? "/dashboard" : "/survey/create"}>
+                {user ? "Go to Your Dashboard" : "Or Create Your Own Survey"}
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const currentSurvey = publicCards[currentCardIndex];
+  const currentQuestion = currentSurvey.questions?.[0];
+
+  if (!currentQuestion) {
+    // Should not happen if data is structured correctly
+    return <div className="text-center py-10 text-destructive">Error: Current card has no question.</div>;
+  }
+
   return (
-    <div className="flex flex-col items-center space-y-10 md:space-y-12 py-4 md:py-0">
-      <section className="text-center py-8 md:py-16">
-        <h1 className="text-4xl sm:text-5xl font-bold font-headline text-primary mb-4 md:mb-6">
-          Welcome to CardSurvey
-        </h1>
-        <p className="text-lg sm:text-xl text-foreground mb-6 md:mb-8 max-w-2xl mx-auto">
-          Create, share, and analyze engaging surveys with a unique card-by-card experience. Get feedback faster and more effectively.
-        </p>
-        <div className="space-y-3 sm:space-y-0 sm:space-x-4">
-          <Button size="lg" asChild className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground">
-            <Link href="/survey/create">Create Your First Survey</Link>
-          </Button>
-          <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
-            <Link href="/#features">Learn More</Link>
-          </Button>
+    <div className="flex flex-col items-center space-y-6 md:space-y-8 py-6 md:py-10">
+      {currentSurvey.description && (
+        <div className="text-center max-w-xl px-4">
+          <p className="text-lg font-medium text-primary">{currentSurvey.description}</p>
+          <p className="text-sm text-muted-foreground">Public Card {currentCardIndex + 1} of {publicCards.length}</p>
         </div>
-      </section>
-
-      <section id="features" className="w-full max-w-5xl grid md:grid-cols-3 gap-6 md:gap-8 px-2">
-        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-          <CardHeader>
-            <div className="flex items-center justify-center mb-3 md:mb-4">
-              <Zap className="h-10 w-10 md:h-12 md:w-12 text-accent" />
-            </div>
-            <CardTitle className="text-center font-headline">Engaging Experience</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-center">
-              One question at a time keeps users focused and increases completion rates.
-            </CardDescription>
-          </CardContent>
-        </Card>
-        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-          <CardHeader>
-            <div className="flex items-center justify-center mb-3 md:mb-4">
-              <CheckCircle className="h-10 w-10 md:h-12 md:w-12 text-accent" />
-            </div>
-            <CardTitle className="text-center font-headline">Easy Creation</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-center">
-              Intuitive tools to build beautiful surveys in minutes. No coding required.
-            </CardDescription>
-          </CardContent>
-        </Card>
-        <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-          <CardHeader>
-            <div className="flex items-center justify-center mb-3 md:mb-4">
-              <Users className="h-10 w-10 md:h-12 md:w-12 text-accent" />
-            </div>
-            <CardTitle className="text-center font-headline">Actionable Insights</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-center">
-              Collect responses and visualize data to make informed decisions.
-            </CardDescription>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="w-full max-w-4xl py-8 md:py-12 px-2">
-        <h2 className="text-3xl font-bold font-headline text-center text-primary mb-6 md:mb-8">How It Works</h2>
-        <div className="relative flex justify-center">
-            <Image 
-                src="https://placehold.co/800x450.png" 
-                alt="Card survey demonstration" 
-                width={800} 
-                height={450} 
-                className="rounded-lg shadow-xl w-full h-auto"
-                data-ai-hint="survey interface"
-            />
-        </div>
-        <p className="text-center mt-4 md:mt-6 text-md md:text-lg text-foreground">
-          Users interact with survey questions presented as individual cards, swiping or tapping to progress.
-        </p>
-      </section>
+      )}
+      <SurveyCard
+        question={currentQuestion}
+        questionNumber={1} // Always 1 for single card context
+        totalQuestions={1}  // Always 1 for single card context
+        onAnswer={handleAnswer}
+        onNext={handleNextPublicCard} // This will act as "Submit and go to next public card"
+        onPrevious={() => {}} // No previous for public card feed
+        isFirstQuestion={true} // Always true for this context
+        isLastQuestion={true} // Always true, button will say "Finish" or similar
+      />
+       <div className="mt-4">
+          <Button size="lg" variant="outline" asChild>
+            <Link href={user ? "/dashboard" : "/survey/create"}>
+              {user ? "My Dashboard" : "Create a Survey"} <ArrowRight className="ml-2 h-5 w-5" />
+            </Link>
+          </Button>
+      </div>
     </div>
   );
 }
+
+    
