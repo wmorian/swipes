@@ -41,18 +41,16 @@ export default function SurveyCard({
     } else if (question.type === "text") {
       answer = textAnswer;
     }
-    if (answer !== undefined) { // Only call onAnswer if an answer is provided
+    if (answer !== undefined) { 
       onAnswer(answer);
     }
     onNext();
-    // Reset local state for next card
     setSelectedValue(undefined);
     setTextAnswer("");
   };
 
   const handlePrevious = () => {
     onPrevious();
-    // Potentially load previous answer if needed, for now reset
     setSelectedValue(undefined);
     setTextAnswer("");
   }
@@ -96,7 +94,7 @@ export default function SurveyCard({
   };
 
   return (
-    <Card className="w-full max-w-lg mx-auto shadow-xl animate-in fade-in-50 duration-500">
+    <Card className="w-full shadow-xl animate-in fade-in-50 duration-500"> {/* Removed max-w-lg mx-auto */}
       <CardHeader>
         <CardTitle className="text-xl font-headline text-primary">{question.text}</CardTitle>
         <CardDescription>

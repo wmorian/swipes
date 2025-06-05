@@ -7,21 +7,21 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question } from '@/types';
-import { useAuth } from '@/context/AuthContext'; // Optional: if auth state influences UI
+import { useAuth } from '@/context/AuthContext'; 
 import { ArrowRight, RefreshCw } from 'lucide-react';
 
 // Mock data for public single-card surveys
 const mockPublicCardsData: Survey[] = [
   {
     id: 'pub-card-101',
-    title: '', // Single cards don't have titles in the survey object itself
+    title: '', 
     description: 'Quick poll: Morning person or night owl?',
     surveyType: 'single-card',
     questions: [
       { id: 'q-pc101', text: 'Are you more of a morning person or a night owl?', type: 'multiple-choice', options: ['Morning Person', 'Night Owl', 'Both equally', 'Neither'] }
     ],
     questionCount: 1,
-    responses: 120, // Example response count
+    responses: 120, 
     status: 'Active',
     privacy: 'Public',
   },
@@ -54,15 +54,14 @@ const mockPublicCardsData: Survey[] = [
 ];
 
 export default function HomePage() {
-  const { user } = useAuth(); // Get user if needed for other UI elements
+  const { user } = useAuth(); 
   const [publicCards, setPublicCards] = useState<Survey[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, any>>({}); // Stores { questionId: answer }
+  const [answers, setAnswers] = useState<Record<string, any>>({});
   const [allCardsViewed, setAllCardsViewed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate fetching public cards
     setTimeout(() => {
       setPublicCards(mockPublicCardsData);
       setIsLoading(false);
@@ -88,14 +87,10 @@ export default function HomePage() {
     if (currentQuestion) {
       const answerForCurrentCard = answers[currentQuestion.id];
       console.log(`Answer for card ${currentSurvey.id} (Question ${currentQuestion.id}):`, answerForCurrentCard || "Skipped");
-      // Here you would typically submit the answer to your backend
-      // For example: submitAnswer(currentSurvey.id, currentQuestion.id, answerForCurrentCard);
     }
-
 
     if (currentCardIndex < publicCards.length - 1) {
       setCurrentCardIndex(prevIndex => prevIndex + 1);
-      // Clear answer for the next card if needed, or let SurveyCard handle its own state reset
     } else {
       setAllCardsViewed(true);
     }
@@ -105,7 +100,6 @@ export default function HomePage() {
     setCurrentCardIndex(0);
     setAllCardsViewed(false);
     setAnswers({});
-    // Potentially re-fetch or re-shuffle cards here in a real app
   }
 
   if (isLoading) {
@@ -114,8 +108,8 @@ export default function HomePage() {
 
   if (allCardsViewed || publicCards.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-10rem)] space-y-6">
-        <Card className="p-6 md:p-10 shadow-xl max-w-md">
+      <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-10rem)] space-y-6 px-4">
+        <Card className="p-6 md:p-10 shadow-xl w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-2xl font-headline text-primary">
               {publicCards.length === 0 ? "No Public Cards Yet!" : "You've Seen All Cards!"}
@@ -126,7 +120,7 @@ export default function HomePage() {
               {publicCards.length === 0 ? "Check back later for engaging public survey cards." : "Thanks for participating! Check back later for new cards."}
             </CardDescription>
             {publicCards.length > 0 && (
-                 <Button onClick={resetCardView} variant="outline" className="mb-4">
+                 <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
                     <RefreshCw className="mr-2 h-4 w-4" /> View Again
                 </Button>
             )}
@@ -145,37 +139,36 @@ export default function HomePage() {
   const currentQuestion = currentSurvey.questions?.[0];
 
   if (!currentQuestion) {
-    // Should not happen if data is structured correctly
     return <div className="text-center py-10 text-destructive">Error: Current card has no question.</div>;
   }
 
   return (
-    <div className="flex flex-col items-center space-y-6 md:space-y-8 py-6 md:py-10">
-      {currentSurvey.description && (
-        <div className="text-center max-w-xl px-4">
-          <p className="text-lg font-medium text-primary">{currentSurvey.description}</p>
-          <p className="text-sm text-muted-foreground">Public Card {currentCardIndex + 1} of {publicCards.length}</p>
+    <div className="flex flex-col items-center justify-center flex-grow py-6 md:py-10 px-4">
+      <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6"> {/* Phone-sized container */}
+        {currentSurvey.description && (
+          <div className="text-center">
+            <p className="text-md font-medium text-primary">{currentSurvey.description}</p>
+            <p className="text-xs text-muted-foreground">Public Card {currentCardIndex + 1} of {publicCards.length}</p>
+          </div>
+        )}
+        <SurveyCard
+          question={currentQuestion}
+          questionNumber={1}
+          totalQuestions={1}
+          onAnswer={handleAnswer}
+          onNext={handleNextPublicCard}
+          onPrevious={() => {}}
+          isFirstQuestion={true}
+          isLastQuestion={true}
+        />
+         <div className="pt-2 text-center">
+            <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
+              <Link href={user ? "/dashboard" : "/survey/create"}>
+                {user ? "My Dashboard" : "Create a Survey"} <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+            </Button>
         </div>
-      )}
-      <SurveyCard
-        question={currentQuestion}
-        questionNumber={1} // Always 1 for single card context
-        totalQuestions={1}  // Always 1 for single card context
-        onAnswer={handleAnswer}
-        onNext={handleNextPublicCard} // This will act as "Submit and go to next public card"
-        onPrevious={() => {}} // No previous for public card feed
-        isFirstQuestion={true} // Always true for this context
-        isLastQuestion={true} // Always true, button will say "Finish" or similar
-      />
-       <div className="mt-4">
-          <Button size="lg" variant="outline" asChild>
-            <Link href={user ? "/dashboard" : "/survey/create"}>
-              {user ? "My Dashboard" : "Create a Survey"} <ArrowRight className="ml-2 h-5 w-5" />
-            </Link>
-          </Button>
       </div>
     </div>
   );
 }
-
-    
