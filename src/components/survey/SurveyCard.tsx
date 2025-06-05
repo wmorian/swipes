@@ -1,3 +1,4 @@
+
 // @/components/survey/SurveyCard.tsx
 "use client";
 
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Question } from "@/types"; // Assuming Question type definition
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -19,6 +20,7 @@ interface SurveyCardProps {
   onPrevious: () => void;
   isFirstQuestion: boolean;
   isLastQuestion: boolean;
+  initialAnswer?: string | undefined | null;
 }
 
 export default function SurveyCard({
@@ -30,9 +32,24 @@ export default function SurveyCard({
   onPrevious,
   isFirstQuestion,
   isLastQuestion,
+  initialAnswer,
 }: SurveyCardProps) {
   const [selectedValue, setSelectedValue] = useState<string | undefined>(undefined);
   const [textAnswer, setTextAnswer] = useState<string>("");
+
+  useEffect(() => {
+    if (question.type === "multiple-choice" || question.type === "rating") {
+      setSelectedValue(initialAnswer || undefined);
+    } else if (question.type === "text") {
+      setTextAnswer(initialAnswer || "");
+    }
+    
+    // Clear selection if initialAnswer is explicitly null/undefined (e.g. new card or no prior answer)
+    if (initialAnswer === null || initialAnswer === undefined) {
+        setSelectedValue(undefined);
+        setTextAnswer("");
+    }
+  }, [initialAnswer, question.id, question.type]);
 
   const handleNext = () => {
     let answer;
@@ -41,18 +58,15 @@ export default function SurveyCard({
     } else if (question.type === "text") {
       answer = textAnswer;
     }
-    if (answer !== undefined) { 
-      onAnswer(answer);
-    }
+    // Pass undefined if no answer is selected (for skip logic)
+    onAnswer(answer); 
     onNext();
-    setSelectedValue(undefined);
-    setTextAnswer("");
+    // Don't reset selectedValue/textAnswer here, useEffect will handle it based on initialAnswer for next card
   };
 
   const handlePrevious = () => {
     onPrevious();
-    setSelectedValue(undefined);
-    setTextAnswer("");
+    // Don't reset selectedValue/textAnswer here either
   }
 
   const renderQuestionInput = () => {
@@ -94,7 +108,7 @@ export default function SurveyCard({
   };
 
   return (
-    <Card className="w-full shadow-xl animate-in fade-in-50 duration-500"> {/* Removed max-w-lg mx-auto */}
+    <Card className="w-full shadow-xl animate-in fade-in-50 duration-500">
       <CardHeader>
         <CardTitle className="text-xl font-headline text-primary">{question.text}</CardTitle>
         <CardDescription>

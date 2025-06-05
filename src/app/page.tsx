@@ -7,36 +7,53 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import SurveyCard from '@/components/survey/SurveyCard';
-import type { Survey, Question } from '@/types';
+import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
 import { ArrowRight, RefreshCw } from 'lucide-react';
 import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
-import { collection, getDocs, query, where, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { 
+  collection, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  doc, 
+  updateDoc, 
+  getDoc,
+  addDoc,
+  writeBatch,
+  limit, 
+  QueryConstraint
+} from 'firebase/firestore';
 
 export default function HomePage() {
   const { user } = useAuth(); 
   const [publicCards, setPublicCards] = useState<Survey[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, any>>({});
+  const [userSubmittedAnswers, setUserSubmittedAnswers] = useState<Record<string, any>>({}); // Local answers before showing stats
   const [allCardsViewed, setAllCardsViewed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [statsForCard, setStatsForCard] = useState<Survey | null>(null);
+  const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
 
-  const fetchPublicCards = async () => {
+  const fetchSurveyData = async () => {
     setIsLoading(true);
     setAllCardsViewed(false);
     setCurrentCardIndex(0);
     setStatsForCard(null);
-    setAnswers({});
+    setUserSubmittedAnswers({});
+    setUserCardInteractions({});
+
     try {
       const surveysCol = collection(db, "surveys");
-      const q = query(surveysCol, 
+      const surveyQueryConstraints: QueryConstraint[] = [
         where("privacy", "==", "Public"), 
         where("surveyType", "==", "single-card"),
         where("status", "==", "Active"),
-        orderBy("createdAt", "desc") // Show newest first
-      );
-      const surveySnapshot = await getDocs(q);
+        orderBy("createdAt", "desc"),
+        // limit(10) // Optionally limit the number of cards fetched
+      ];
+      const surveySnapshot = await getDocs(query(surveysCol, ...surveyQueryConstraints));
       const fetchedSurveys = surveySnapshot.docs.map(docSnap => {
         const data = docSnap.data();
         return {
@@ -47,26 +64,45 @@ export default function HomePage() {
         } as Survey;
       });
       setPublicCards(fetchedSurveys);
+
+      if (user && fetchedSurveys.length > 0) {
+        const surveyIds = fetchedSurveys.map(s => s.id);
+        const interactionsQuery = query(
+          collection(db, "userSurveyAnswers"),
+          where("userId", "==", user.id),
+          where("surveyId", "in", surveyIds)
+        );
+        const interactionsSnapshot = await getDocs(interactionsQuery);
+        const interactionsMap: Record<string, UserSurveyAnswer & { docId: string }> = {};
+        interactionsSnapshot.forEach(docSnap => {
+          interactionsMap[docSnap.data().surveyId] = { 
+            ...(docSnap.data() as UserSurveyAnswer), 
+            docId: docSnap.id 
+          };
+        });
+        setUserCardInteractions(interactionsMap);
+      }
+
       if (fetchedSurveys.length === 0) {
         setAllCardsViewed(true);
       }
     } catch (error) {
-      console.error("Error fetching public cards:", error);
+      console.error("Error fetching data:", error);
       setPublicCards([]);
-      setAllCardsViewed(true); // Assume no cards if error
+      setAllCardsViewed(true);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchPublicCards();
-  }, []);
+    fetchSurveyData();
+  }, [user]); // Re-fetch if user logs in/out to get their interactions
 
-  const handleAnswer = (answer: any) => {
+  const handleAnswerSubmission = (answer: any) => {
     if (publicCards.length > 0 && publicCards[currentCardIndex] && publicCards[currentCardIndex].questions) {
       const currentQuestionId = publicCards[currentCardIndex].questions![0].id;
-      setAnswers(prev => ({ ...prev, [currentQuestionId]: answer }));
+      setUserSubmittedAnswers(prev => ({ ...prev, [currentQuestionId]: answer }));
     }
   };
 
@@ -75,53 +111,101 @@ export default function HomePage() {
 
     const currentSurvey = publicCards[currentCardIndex];
     const currentQuestion = currentSurvey.questions?.[0];
-    let interactionRecorded = false;
+    if (!currentQuestion) {
+      proceedToNextCard(); // Should not happen with valid data
+      return;
+    }
 
-    if (currentQuestion) {
-      const answerForCurrentCard = answers[currentQuestion.id];
-      const surveyRef = doc(db, "surveys", currentSurvey.id);
-      const updates: Record<string, any> = { updatedAt: serverTimestamp() };
-      let updatedCardForStatsDisplay = { ...currentSurvey, optionCounts: { ...(currentSurvey.optionCounts || {}) } };
+    const submittedAnswer = userSubmittedAnswers[currentQuestion.id]; // This is the new answer/skip
+    const existingUserInteraction = user ? userCardInteractions[currentSurvey.id] : undefined;
+    
+    const surveyRef = doc(db, "surveys", currentSurvey.id);
+    const surveyStatUpdates: Record<string, any> = { updatedAt: serverTimestamp() };
 
-      if (answerForCurrentCard !== undefined && updatedCardForStatsDisplay.optionCounts && updatedCardForStatsDisplay.optionCounts.hasOwnProperty(answerForCurrentCard)) {
-        updates.responses = increment(1);
-        updates[`optionCounts.${answerForCurrentCard}`] = increment(1);
-        
-        updatedCardForStatsDisplay.responses = (updatedCardForStatsDisplay.responses || 0) + 1;
-        updatedCardForStatsDisplay.optionCounts[answerForCurrentCard] = (updatedCardForStatsDisplay.optionCounts[answerForCurrentCard] || 0) + 1;
-        interactionRecorded = true;
-      } else {
-        updates.skipCount = increment(1);
-        updatedCardForStatsDisplay.skipCount = (updatedCardForStatsDisplay.skipCount || 0) + 1;
-        interactionRecorded = true; // Skip is an interaction
+    // 1. Adjust stats based on previous interaction (if any)
+    if (existingUserInteraction) {
+      if (existingUserInteraction.isSkipped) {
+        surveyStatUpdates.skipCount = increment(-1);
+      } else if (existingUserInteraction.answerValue !== null && currentSurvey.optionCounts?.hasOwnProperty(existingUserInteraction.answerValue)) {
+        surveyStatUpdates.responses = increment(-1);
+        surveyStatUpdates[`optionCounts.${existingUserInteraction.answerValue}`] = increment(-1);
+      }
+    }
+
+    // 2. Apply new interaction to stats
+    if (submittedAnswer !== undefined) { // User provided an answer
+      surveyStatUpdates.responses = increment(surveyStatUpdates.responses ? surveyStatUpdates.responses.operand + 1 : 1);
+      if (currentSurvey.optionCounts?.hasOwnProperty(submittedAnswer)) {
+        surveyStatUpdates[`optionCounts.${submittedAnswer}`] = increment(
+           currentSurvey.optionCounts.hasOwnProperty(submittedAnswer) && surveyStatUpdates[`optionCounts.${submittedAnswer}`] 
+           ? surveyStatUpdates[`optionCounts.${submittedAnswer}`].operand + 1 
+           : 1
+        );
+      }
+    } else { // User skipped
+      surveyStatUpdates.skipCount = increment(surveyStatUpdates.skipCount ? surveyStatUpdates.skipCount.operand + 1 : 1);
+    }
+    
+    try {
+      // Batch Firestore writes if possible, or sequence them
+      await updateDoc(surveyRef, surveyStatUpdates);
+
+      // 3. Record/Update user's specific interaction
+      if (user) {
+        const interactionData: Omit<UserSurveyAnswer, 'id' | 'answeredAt'> & { answeredAt: any } = {
+          userId: user.id,
+          surveyId: currentSurvey.id,
+          questionId: currentQuestion.id,
+          answerValue: submittedAnswer !== undefined ? submittedAnswer : null,
+          isSkipped: submittedAnswer === undefined,
+          answeredAt: serverTimestamp(),
+        };
+
+        if (existingUserInteraction?.docId) {
+          await updateDoc(doc(db, "userSurveyAnswers", existingUserInteraction.docId), interactionData);
+          setUserCardInteractions(prev => ({
+            ...prev,
+            [currentSurvey.id]: { ...interactionData, docId: existingUserInteraction.docId, answeredAt: new Date() } // Update local state
+          }));
+        } else {
+          const newDocRef = await addDoc(collection(db, "userSurveyAnswers"), interactionData);
+          setUserCardInteractions(prev => ({
+            ...prev,
+            [currentSurvey.id]: { ...interactionData, docId: newDocRef.id, answeredAt: new Date() } // Update local state
+          }));
+        }
       }
       
-      try {
-        await updateDoc(surveyRef, updates);
-        console.log(`Stats updated for card ${currentSurvey.id} in Firestore.`);
-        
-        // Update local publicCards array for optimistic UI update for *this specific card*
-        setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedCardForStatsDisplay : card));
-        setStatsForCard(updatedCardForStatsDisplay);
+      // 4. Fetch updated survey for stats display (or calculate optimistically)
+      const updatedSurveyDoc = await getDoc(surveyRef);
+      let updatedCardForStatsDisplay: Survey | null = null;
+      if (updatedSurveyDoc.exists()) {
+          const data = updatedSurveyDoc.data();
+          updatedCardForStatsDisplay = {
+            id: updatedSurveyDoc.id,
+            ...data,
+            createdAt: (data.createdAt as Timestamp)?.toDate(),
+            updatedAt: (data.updatedAt as Timestamp)?.toDate(),
+          } as Survey;
 
-      } catch (error) {
-        console.error("Error updating card stats in Firestore:", error);
-        // If Firestore update fails, show stats based on local optimistic update anyway for UX,
-        // or revert optimistic update and show an error. For now, show optimistic.
-        setStatsForCard(updatedCardForStatsDisplay);
+          // Optimistically update the card in the publicCards array for next render if user revisits
+          setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedCardForStatsDisplay! : card));
       }
+      setStatsForCard(updatedCardForStatsDisplay || currentSurvey); // Fallback to currentSurvey if fetch fails
 
-
-      // Clear answer for the current question
-      setAnswers(prevAns => {
-        const newAns = {...prevAns};
-        delete newAns[currentQuestion.id];
-        return newAns;
-      });
-    } else {
-      // If no question (error state for a card), just move to next
-      proceedToNextCard();
+    } catch (error) {
+      console.error("Error updating card/interaction:", error);
+      // Potentially show an error toast to the user
+      // For now, show stats based on local attempt if any optimistic update was done, or currentSurvey
+      setStatsForCard(currentSurvey); 
     }
+
+    // Clear submitted answer for the current question
+    setUserSubmittedAnswers(prevAns => {
+      const newAns = {...prevAns};
+      delete newAns[currentQuestion.id];
+      return newAns;
+    });
   };
 
   const proceedToNextCard = () => {
@@ -134,8 +218,7 @@ export default function HomePage() {
   };
   
   const resetCardView = () => {
-    // Re-fetch cards to get latest data, including any new cards or updated stats from others
-    fetchPublicCards(); 
+    fetchSurveyData(); 
   };
 
   if (isLoading) {
@@ -180,7 +263,6 @@ export default function HomePage() {
     );
   }
 
-
   if (allCardsViewed || publicCards.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-10rem)] space-y-6 px-4">
@@ -194,7 +276,7 @@ export default function HomePage() {
             <CardDescription className="text-md mb-6">
               {publicCards.length === 0 && !isLoading ? "Check back later for engaging public survey cards, or create your own." : "Thanks for participating! Check back later for new cards."}
             </CardDescription>
-            {publicCards.length > 0 && ( // Only show if there were cards to view
+            {publicCards.length > 0 && (
                  <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
                     <RefreshCw className="mr-2 h-4 w-4" /> View Cards Again
                 </Button>
@@ -211,10 +293,11 @@ export default function HomePage() {
   }
 
   const currentSurvey = publicCards[currentCardIndex];
-  const currentQuestion = currentSurvey?.questions?.[0]; // Add optional chaining for safety
+  const currentQuestion = currentSurvey?.questions?.[0]; 
+  const currentUserInitialAnswer = user ? userCardInteractions[currentSurvey?.id]?.answerValue : undefined;
 
-  if (!currentSurvey || !currentQuestion) { // Check if currentSurvey itself is defined
-    // This can happen briefly if cards are being re-fetched or if there's an issue
+
+  if (!currentSurvey || !currentQuestion) {
     return <div className="text-center py-10 text-muted-foreground">Loading card data or no question available...</div>;
   }
 
@@ -231,11 +314,12 @@ export default function HomePage() {
           question={currentQuestion}
           questionNumber={1}
           totalQuestions={1}
-          onAnswer={handleAnswer}
+          onAnswer={handleAnswerSubmission}
           onNext={handleCardInteractionCompletion} 
           onPrevious={() => {}} 
           isFirstQuestion={true}
           isLastQuestion={true}
+          initialAnswer={currentUserInitialAnswer}
         />
          <div className="pt-2 text-center">
             <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">

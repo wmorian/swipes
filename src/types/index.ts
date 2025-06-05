@@ -33,8 +33,18 @@ export interface Survey {
   skipCount?: number; // How many times this card was skipped
 }
 
-export interface Answer {
+export interface Answer { // This type seems more for aggregated answers/stats, might deprecate if not used elsewhere
   questionId: string;
   value: any; // Can be string for text/multiple-choice, number for rating
   userId?: string; // Optional: if tracking who answered
+}
+
+export interface UserSurveyAnswer {
+  id?: string; // Firestore document ID for this specific answer record
+  userId: string;
+  surveyId: string;
+  questionId: string;
+  answerValue: any | null; // Store null if skipped, actual value if answered
+  isSkipped: boolean;
+  answeredAt: Timestamp | Date;
 }
