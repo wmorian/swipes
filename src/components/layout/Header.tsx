@@ -1,3 +1,4 @@
+
 // @/components/layout/Header.tsx
 "use client";
 
@@ -81,35 +82,35 @@ export default function Header() {
       </header>
 
       {/* Bottom Navigation Bar - Mobile Only */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border shadow-t-lg p-1 flex justify-around items-center z-40">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border shadow-t-lg p-1 flex justify-around items-center z-40 h-16">
         {mobileBottomNavItems.map(item => {
           if (item.authRequired && !user) return null;
           const IconComponent = item.icon;
           const isActive = item.href === "/survey/create/questions" ? pathname.startsWith(item.href) : pathname === item.href;
           return (
-            <Link key={item.href} href={item.href} passHref>
+            <Link key={item.href} href={item.href} passHref className="flex-1 flex justify-center">
               <Button 
                 variant="ghost" 
-                size="sm" 
-                className={`flex flex-col h-auto p-1 w-1/3 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} 
+                size="lg" // Use a larger size for better tap target
+                className={`flex flex-col items-center justify-center h-full w-full p-1 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} 
                 aria-label={item.label}
               >
-                <IconComponent size={22} />
-                <span className="text-xs mt-0.5 truncate w-full text-center">{item.label}</span>
+                <IconComponent size={26} /> {/* Increased icon size */}
+                {/* Text label removed */}
               </Button>
             </Link>
           );
         })}
         {!user && (
-           <Link href={mobileLoginNavItem.href} passHref>
+           <Link href={mobileLoginNavItem.href} passHref className="flex-1 flex justify-center">
              <Button 
                 variant="ghost" 
-                size="sm" 
-                className={`flex flex-col h-auto p-1 w-1/2 ${pathname === mobileLoginNavItem.href ? 'text-primary' : 'text-muted-foreground'}`} 
+                size="lg" // Use a larger size for better tap target
+                className={`flex flex-col items-center justify-center h-full w-full p-1 ${pathname === mobileLoginNavItem.href ? 'text-primary' : 'text-muted-foreground'}`} 
                 aria-label={mobileLoginNavItem.label}
               >
-               <mobileLoginNavItem.icon size={22} />
-               <span className="text-xs mt-0.5 truncate w-full text-center">{mobileLoginNavItem.label}</span>
+               <mobileLoginNavItem.icon size={26} /> {/* Increased icon size */}
+               {/* Text label removed */}
              </Button>
            </Link>
         )}
