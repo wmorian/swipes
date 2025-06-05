@@ -1,4 +1,3 @@
-
 // @/context/SurveyCreationContext.tsx
 "use client";
 
@@ -16,38 +15,11 @@ const questionSchema = z.object({
 });
 export type SurveyQuestionContext = z.infer<typeof questionSchema>;
 
-
-export const surveyCreationStep1Schema = z.object({
-  title: z.string().optional(), 
-  description: z.string().optional(),
-  surveyType: z.enum(["single-card", "card-deck", "add-to-existing"], {
-    required_error: "Please select a survey type.",
-  }),
-  privacy: z.enum(["public", "invite-only"]).optional(),
-}).superRefine((data, ctx) => {
-  if (data.surveyType === "card-deck") {
-    if (!data.title || data.title.length < 3) { 
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Survey title must be at least 3 characters for Card Decks.",
-        path: ["title"],
-      });
-    }
-    if (!data.privacy) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Privacy setting is required for Card Decks.",
-        path: ["privacy"],
-      });
-    }
-  }
-});
-
 export type SurveyCreationData = {
-  surveyType?: "single-card" | "card-deck" | "add-to-existing";
-  title?: string;
-  description?: string;
-  privacy?: "public" | "invite-only";
+  surveyType: "single-card"; // For now, only single-card is supported
+  title?: string; // Will be "" for single-card
+  description: string; // Optional short description for the card
+  privacy?: "public" | "invite-only"; // Will be "Public" for single-card
   questions: Array<SurveyQuestionContext>; 
 };
 
@@ -56,7 +28,6 @@ interface SurveyCreationContextType {
   setSurveyData: Dispatch<SetStateAction<SurveyCreationData>>;
   currentStep: number;
   setCurrentStep: Dispatch<SetStateAction<number>>;
-  updateStep1Data: (data: Partial<Pick<SurveyCreationData, 'surveyType' | 'title' | 'description' | 'privacy'>>) => void;
   addQuestion: () => void; 
   updateQuestion: (index: number, question: SurveyQuestionContext) => void;
   removeQuestion: (index: number) => void;
@@ -71,10 +42,10 @@ const getDefaultQuestion = (): SurveyQuestionContext => ({
 });
 
 const defaultSurveyData: SurveyCreationData = {
-  surveyType: "single-card", // Default to single-card
-  title: "",
-  description: "",
-  privacy: "public", // Will be overridden to undefined for single-card in effects
+  surveyType: "single-card",
+  title: "", // Not used for single-card UI, but set for data consistency
+  description: "", // Not used for single-card UI, but can be stored
+  privacy: "Public", // Single cards are always public
   questions: [getDefaultQuestion()],
 };
 
@@ -82,37 +53,13 @@ const SurveyCreationContext = createContext<SurveyCreationContextType | undefine
 
 export function SurveyCreationProvider({ children }: { children: ReactNode }) {
   const [surveyData, setSurveyData] = useState<SurveyCreationData>(defaultSurveyData);
-  const [currentStep, setCurrentStep] = useState(1);
-
-  const updateStep1Data = useCallback((data: Partial<Pick<SurveyCreationData, 'surveyType' | 'title' | 'description' | 'privacy'>>) => {
-    setSurveyData(prev => {
-      const newSurveyType = data.surveyType !== undefined ? data.surveyType : prev.surveyType;
-      let newQuestions = prev.questions;
-
-      if (data.surveyType === 'single-card' && prev.surveyType !== 'single-card') {
-        newQuestions = [getDefaultQuestion()];
-      } else if (data.surveyType === 'single-card') {
-        if (newQuestions.length === 0) {
-            newQuestions = [getDefaultQuestion()];
-        } else if (newQuestions.length > 1) {
-            newQuestions = [newQuestions[0] || getDefaultQuestion()]; 
-        }
-      } else if (newSurveyType !== 'single-card' && newQuestions.length === 0) {
-        newQuestions = [getDefaultQuestion()];
-      }
-      
-      return {
-        ...prev,
-        ...data, 
-        questions: newQuestions,
-        title: newSurveyType === 'single-card' ? undefined : (data.title !== undefined ? data.title : prev.title),
-        privacy: newSurveyType === 'single-card' ? undefined : (data.privacy !== undefined ? data.privacy : prev.privacy),
-      };
-    });
-  }, []);
+  const [currentStep, setCurrentStep] = useState(1); // Start at step 1 (questions page)
 
   const addQuestion = useCallback(() => {
     setSurveyData(prev => {
+        // For single-card, we should only allow one question.
+        // This logic might need adjustment if we re-introduce "card-deck".
+        // For now, this will prevent adding more than one question if it's single-card.
         if (prev.surveyType === "single-card" && prev.questions.length >= 1) {
             console.warn("Cannot add more than one question to a single-card survey.");
             return prev;
@@ -133,11 +80,12 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
 
   const removeQuestion = useCallback((index: number) => {
     setSurveyData(prev => {
+        // For single-card, we should not allow removing the only question.
         if (prev.surveyType === "single-card") {
-            console.warn("Cannot remove the question from a single-card survey.");
+            console.warn("Cannot remove the question from a single-card survey. Edit it instead.");
             return prev;
         }
-        if (prev.questions.length <= 1) {
+        if (prev.questions.length <= 1) { // For card-decks, ensure at least one question remains
             console.warn("Survey must have at least one question.");
             return prev;
         }
@@ -153,10 +101,10 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
         surveyType: "single-card",
         title: "",
         description: "",
-        privacy: undefined,
+        privacy: "Public",
         questions: [getDefaultQuestion()],
     });
-    setCurrentStep(1);
+    setCurrentStep(1); // Reset to the first step (questions page)
   }, []);
 
   return (
@@ -165,7 +113,6 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
         setSurveyData, 
         currentStep, 
         setCurrentStep,
-        updateStep1Data,
         addQuestion,
         updateQuestion,
         removeQuestion,

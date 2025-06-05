@@ -1,4 +1,3 @@
-
 // @/app/survey/create/questions/page.tsx
 "use client";
 
@@ -12,13 +11,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { ArrowLeft, ArrowRight, PlusCircle, Trash2, XCircle } from 'lucide-react';
-// SurveyCard import is no longer needed here for live preview
 import { useToast } from "@/hooks/use-toast";
 
 export default function CreateSurveyQuestionsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { surveyData, setCurrentStep, addQuestion, updateQuestion, removeQuestion } = useSurveyCreation();
+  const { surveyData, setCurrentStep, addQuestion, updateQuestion, removeQuestion, setSurveyData } = useSurveyCreation();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -26,13 +24,25 @@ export default function CreateSurveyQuestionsPage() {
       router.push('/login?redirect=/survey/create/questions');
       return;
     }
-    if (!surveyData.surveyType) {
-      toast({ title: "Missing Details", description: "Survey type not set. Please start from step 1.", variant: "destructive"});
-      router.push('/survey/create');
-      return;
+    // Ensure surveyData is correctly initialized for single-card if not already
+    // This mainly ensures that if context somehow had a different type, it's reset here.
+    if (surveyData.surveyType !== "single-card" || surveyData.questions.length === 0) {
+      setSurveyData(prev => ({
+        ...prev,
+        surveyType: "single-card",
+        title: "",
+        description: prev.description || "", // Keep description if it was set
+        privacy: "Public",
+        questions: prev.questions.length > 0 ? [prev.questions[0]] : [{ // Ensure only one question
+          id: `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
+          text: "",
+          type: "multiple-choice",
+          options: [""]
+        }]
+      }));
     }
-    setCurrentStep(2);
-  }, [user, authLoading, router, surveyData.surveyType, setCurrentStep, toast]);
+    setCurrentStep(1); // This is now Step 1
+  }, [user, authLoading, router, setCurrentStep, surveyData.surveyType, surveyData.questions, setSurveyData]);
 
   const handleQuestionTextChange = (index: number, text: string) => {
     const updatedQuestion = { ...surveyData.questions[index], text };
@@ -67,23 +77,22 @@ export default function CreateSurveyQuestionsPage() {
   
   const validateQuestions = (): boolean => {
     if (surveyData.questions.length === 0) {
-        toast({ title: "No Questions", description: "Please add at least one question.", variant: "destructive"});
+        toast({ title: "No Question", description: "Please define your question.", variant: "destructive"});
         return false;
     }
-    for (const q of surveyData.questions) {
-        if (!q.text.trim()) {
-            toast({ title: "Incomplete Question", description: `Question text for "${q.id.substring(0,10)}..." is missing.`, variant: "destructive"});
+    const q = surveyData.questions[0]; // For single-card, always the first question
+    if (!q.text.trim()) {
+        toast({ title: "Incomplete Question", description: `Question text is missing.`, variant: "destructive"});
+        return false;
+    }
+    if (q.options.length === 0) {
+        toast({ title: "No Options", description: `Question "${q.text || q.id.substring(0,10)}" has no options.`, variant: "destructive"});
+        return false;
+    }
+    for (const opt of q.options) {
+        if (!opt.trim()) {
+            toast({ title: "Empty Option", description: `Question "${q.text || q.id.substring(0,10)}" has an empty option.`, variant: "destructive"});
             return false;
-        }
-        if (q.options.length === 0) {
-            toast({ title: "No Options", description: `Question "${q.text || q.id.substring(0,10)}" has no options.`, variant: "destructive"});
-            return false;
-        }
-        for (const opt of q.options) {
-            if (!opt.trim()) {
-                toast({ title: "Empty Option", description: `Question "${q.text || q.id.substring(0,10)}" has an empty option.`, variant: "destructive"});
-                return false;
-            }
         }
     }
     return true;
@@ -93,50 +102,45 @@ export default function CreateSurveyQuestionsPage() {
     if (!validateQuestions()) {
         return;
     }
-    setCurrentStep(3);
+    setCurrentStep(2); // Proceed to Step 2 (Preview)
     router.push("/survey/create/preview");
   };
 
   const handleBack = () => {
-    setCurrentStep(1);
-    router.push("/survey/create");
+    // Navigate back to dashboard as Step 1 (details) is removed
+    router.push("/dashboard"); 
   };
   
   if (authLoading || (!user && !authLoading)) {
     return <div className="text-center py-10">{authLoading ? "Loading question editor..." : "Redirecting to login..."}</div>;
   }
   
-  if (!surveyData.surveyType) {
-     return <div className="text-center py-10">Loading configuration...</div>;
+  // Since surveyType is now fixed to 'single-card' and description is handled by context,
+  // no need to check surveyData.surveyType for loading message here as much.
+  // The useEffect handles initial setup.
+  if (surveyData.questions.length === 0) {
+     return <div className="text-center py-10">Initializing question editor...</div>;
   }
+
+  // For single card, we always edit the first (and only) question.
+  const question = surveyData.questions[0];
+  const qIndex = 0;
 
   return (
     <Card className="w-full max-w-3xl mx-auto shadow-xl">
       <CardHeader>
-        <CardTitle className="text-2xl font-headline">Create New Survey - Step 2 of 3</CardTitle>
+        <CardTitle className="text-2xl font-headline">Create New Survey Card - Step 1 of 2</CardTitle>
         <CardDescription>
-            {surveyData.surveyType === "single-card" ? "Define your single question." : "Add questions to your card deck."}
-             All questions are multiple-choice with up to 5 options.
+            Define your single question. All questions are multiple-choice with up to 5 options.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
-        {surveyData.questions.map((question, qIndex) => (
           <Card key={question.id || qIndex} className="p-4 space-y-4 shadow-md w-full max-w-xs sm:max-w-sm mx-auto">
             <div className="flex justify-between items-center">
               <Label htmlFor={`qtext-${qIndex}`} className="text-lg font-semibold text-primary">
-                Question {qIndex + 1}
+                Your Question
               </Label>
-              {surveyData.surveyType === "card-deck" && surveyData.questions.length > 1 && (
-                <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => removeQuestion(qIndex)} 
-                    className="text-destructive hover:text-destructive/80"
-                    aria-label="Remove question"
-                >
-                  <Trash2 className="h-5 w-5" />
-                </Button>
-              )}
+              {/* Remove question button is not needed for single card mode */}
             </div>
             <Textarea
               id={`qtext-${qIndex}`}
@@ -180,24 +184,15 @@ export default function CreateSurveyQuestionsPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Option
               </Button>
             </div>
-            {/* Removed live preview section */}
           </Card>
-        ))}
-
-        {surveyData.surveyType === "card-deck" && (
-          <div className="flex justify-center">
-            <Button onClick={addQuestion} variant="secondary" className="w-full max-w-xs sm:max-w-sm">
-              <PlusCircle className="mr-2 h-5 w-5" /> Add Another Question
-            </Button>
-          </div>
-        )}
+        {/* "Add Another Question" button is not needed for single card mode */}
       </CardContent>
       <CardFooter className="flex justify-between mt-8 pt-6 border-t">
           <Button variant="outline" onClick={handleBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Details
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
           </Button>
           <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            Next: Preview Survey <ArrowRight className="mr-2 h-4 w-4" />
+            Next: Preview Card <ArrowRight className="mr-2 h-4 w-4" />
           </Button>
       </CardFooter>
     </Card>

@@ -247,7 +247,7 @@ export default function DashboardClient() {
                   className="h-12 w-12 rounded-full p-0 shadow-md flex items-center justify-center"
                   aria-label="Create single survey card"
                 >
-                  <Link href="/survey/create" onClick={() => setIsFabOpen(false)}>
+                  <Link href="/survey/create/questions" onClick={() => setIsFabOpen(false)}>
                     <FilePlus className="h-6 w-6" />
                   </Link>
                 </Button>

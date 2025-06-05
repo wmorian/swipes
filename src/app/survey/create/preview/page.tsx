@@ -1,4 +1,3 @@
-
 // @/app/survey/create/preview/page.tsx
 "use client";
 
@@ -24,7 +23,7 @@ export default function CreateSurveyPreviewPage() {
   const [isRedirectingAfterPublish, setIsRedirectingAfterPublish] = useState(false);
 
   useEffect(() => {
-    if (isRedirectingAfterPublish) { 
+    if (isRedirectingAfterPublish || isPublishing) { 
       return;
     }
 
@@ -33,21 +32,14 @@ export default function CreateSurveyPreviewPage() {
       return;
     }
 
-    if (isPublishing) { 
-        return;
-    }
-
-    if (surveyData.surveyType !== "single-card") {
-        toast({ title: "Configuration Error", description: "Currently only single card creation is supported. Please restart.", variant: "destructive"});
-        router.push('/survey/create');
-        return;
-    }
+    // Since Step 1 (details) is removed, surveyType is always "single-card" by context default.
+    // Description is also handled by context default ("").
     if (surveyData.questions.length === 0 || surveyData.questions.some(q => !q.text.trim() || q.options.some(opt => !opt.trim()))) {
-        toast({ title: "Incomplete Survey", description: "Please complete previous steps and ensure all questions/options are filled.", variant: "destructive"});
-        router.push(surveyData.surveyType ? '/survey/create/questions' : '/survey/create');
+        toast({ title: "Incomplete Question", description: "Please ensure your question and options are filled out.", variant: "destructive"});
+        router.push('/survey/create/questions'); // Go back to questions (new Step 1)
         return;
     }
-    setCurrentStep(3);
+    setCurrentStep(2); // This is now Step 2
   }, [user, authLoading, router, surveyData, setCurrentStep, toast, isPublishing, isRedirectingAfterPublish]);
   
   const mapContextQuestionToSurveyCardQuestion = (cq: typeof surveyData.questions[0]): SurveyCardQuestion => ({
@@ -69,9 +61,12 @@ export default function CreateSurveyPreviewPage() {
 
     setIsPublishing(true);
 
+    // Ensure these defaults for single-card, even if context might have them.
+    const finalDescription = surveyData.description || ""; // Use context description or default to empty.
+
     const newSurveyFirestoreData: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
-        title: "", 
-        description: surveyData.description || "",
+        title: "", // Single cards don't have titles in UI
+        description: finalDescription, // Use the description from context (which defaults to "")
         surveyType: "single-card",
         questions: surveyData.questions,
         questionCount: 1,
@@ -110,15 +105,15 @@ export default function CreateSurveyPreviewPage() {
   };
 
   const handleBack = () => {
-    setCurrentStep(2);
+    setCurrentStep(1); // Go back to Step 1 (Questions page)
     router.push("/survey/create/questions");
   };
 
   if (authLoading || (!user && !authLoading) || isRedirectingAfterPublish) {
      return <div className="text-center py-10">{isRedirectingAfterPublish ? "Redirecting..." : (authLoading ? "Loading preview..." : "Redirecting to login...")}</div>;
   }
-   if (surveyData.surveyType !== "single-card" || surveyData.questions.length === 0) {
-    return <div className="text-center py-10">Loading survey data or incomplete configuration...</div>;
+   if (surveyData.questions.length === 0) { // surveyType is always single-card
+    return <div className="text-center py-10">Loading question data or incomplete configuration...</div>;
   }
 
   const firstQuestion = surveyData.questions[0];
@@ -127,14 +122,14 @@ export default function CreateSurveyPreviewPage() {
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
-        <CardTitle className="text-2xl font-headline">Create New Survey - Step 3 of 3: Preview & Publish</CardTitle>
+        <CardTitle className="text-2xl font-headline">Create New Survey Card - Step 2 of 2: Preview & Publish</CardTitle>
         <CardDescription>
             Review your single public card. If it looks good, publish it!
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="text-center mb-4 p-4 border rounded-lg bg-muted/50">
-            <h3 className="text-xl font-semibold text-primary">{"Single Public Card"}</h3>
+            <h3 className="text-xl font-semibold text-primary">{"Single Public Card Preview"}</h3>
             {surveyData.description && <p className="text-sm text-muted-foreground mt-1">{surveyData.description}</p>}
              <p className="text-xs text-muted-foreground mt-1">Type: Single Card (Public)</p>
              <p className="text-xs text-muted-foreground mt-1">Questions: 1</p>
@@ -147,6 +142,7 @@ export default function CreateSurveyPreviewPage() {
               questionNumber={1}
               totalQuestions={1} 
               onNext={() => { alert("This is a static preview. Navigation is disabled.")}} 
+              onSkip={() => { alert("This is a static preview. Navigation is disabled.")}}
               isLastQuestion={true}
             />
           ) : (
