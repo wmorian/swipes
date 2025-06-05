@@ -21,12 +21,22 @@ export default function CreateSurveyPreviewPage() {
   const { surveyData, setCurrentStep, resetSurveyCreation } = useSurveyCreation();
   const { toast } = useToast();
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isRedirectingAfterPublish, setIsRedirectingAfterPublish] = useState(false); // New state
 
   useEffect(() => {
+    if (isRedirectingAfterPublish) { // If redirecting after successful publish, bail out.
+      return;
+    }
+
     if (!authLoading && !user) {
       router.push('/login?redirect=/survey/create/preview');
       return;
     }
+
+    if (isPublishing) { // If currently in the process of publishing, bail out.
+        return;
+    }
+
     if (surveyData.surveyType !== "single-card") {
         toast({ title: "Configuration Error", description: "Currently only single card creation is supported. Please restart.", variant: "destructive"});
         router.push('/survey/create');
@@ -38,7 +48,7 @@ export default function CreateSurveyPreviewPage() {
         return;
     }
     setCurrentStep(3);
-  }, [user, authLoading, router, surveyData, setCurrentStep, toast]);
+  }, [user, authLoading, router, surveyData, setCurrentStep, toast, isPublishing, isRedirectingAfterPublish]);
   
   const mapContextQuestionToSurveyCardQuestion = (cq: typeof surveyData.questions[0]): SurveyCardQuestion => ({
     id: cq.id,
@@ -60,7 +70,7 @@ export default function CreateSurveyPreviewPage() {
     setIsPublishing(true);
 
     const newSurveyFirestoreData: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
-        title: "", // Single cards don't have titles
+        title: "", 
         description: surveyData.description || "",
         surveyType: "single-card",
         questions: surveyData.questions,
@@ -85,8 +95,9 @@ export default function CreateSurveyPreviewPage() {
         description: `Your single card survey has been created. ID: ${docRef.id}`,
         variant: "default"
       });
+      setIsRedirectingAfterPublish(true); // Set flag before reset and navigation
       resetSurveyCreation(); 
-      router.push(user ? `/dashboard?newSurveyId=${docRef.id}` : `/`); // Redirect to home if not dashboard focus
+      router.push(user ? `/dashboard?newSurveyId=${docRef.id}` : `/`);
     } catch (error) {
       console.error("Error publishing survey: ", error);
       toast({
@@ -94,8 +105,7 @@ export default function CreateSurveyPreviewPage() {
         description: "Could not publish your survey card. Please try again.",
         variant: "destructive"
       });
-    } finally {
-      setIsPublishing(false);
+      setIsPublishing(false); // Reset publishing state on error
     }
   };
 
@@ -104,8 +114,8 @@ export default function CreateSurveyPreviewPage() {
     router.push("/survey/create/questions");
   };
 
-  if (authLoading || (!user && !authLoading)) {
-     return <div className="text-center py-10">{authLoading ? "Loading preview..." : "Redirecting to login..."}</div>;
+  if (authLoading || (!user && !authLoading) || isRedirectingAfterPublish) {
+     return <div className="text-center py-10">{isRedirectingAfterPublish ? "Redirecting..." : (authLoading ? "Loading preview..." : "Redirecting to login...")}</div>;
   }
    if (surveyData.surveyType !== "single-card" || surveyData.questions.length === 0) {
     return <div className="text-center py-10">Loading survey data or incomplete configuration...</div>;
@@ -151,8 +161,8 @@ export default function CreateSurveyPreviewPage() {
           <Button variant="outline" onClick={handleBack} disabled={isPublishing}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Question
           </Button>
-          <Button onClick={handlePublish} className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isPublishing}>
-            {isPublishing ? "Publishing..." : <><CheckCircle className="mr-2 h-4 w-4" /> Publish Card</>}
+          <Button onClick={handlePublish} className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isPublishing || isRedirectingAfterPublish}>
+            {isPublishing || isRedirectingAfterPublish ? "Publishing..." : <><CheckCircle className="mr-2 h-4 w-4" /> Publish Card</>}
           </Button>
         </CardFooter>
     </Card>
