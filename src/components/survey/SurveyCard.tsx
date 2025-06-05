@@ -15,8 +15,7 @@ interface SurveyCardProps {
   question: Question;
   questionNumber: number;
   totalQuestions: number;
-  onAnswer: (answer: any) => void;
-  onNext: () => void;
+  onNext: (answer?: any) => void; // Changed: now accepts optional answer
   onPrevious: () => void;
   isFirstQuestion: boolean;
   isLastQuestion: boolean;
@@ -27,7 +26,6 @@ export default function SurveyCard({
   question,
   questionNumber,
   totalQuestions,
-  onAnswer,
   onNext,
   onPrevious,
   isFirstQuestion,
@@ -44,29 +42,24 @@ export default function SurveyCard({
       setTextAnswer(initialAnswer || "");
     }
     
-    // Clear selection if initialAnswer is explicitly null/undefined (e.g. new card or no prior answer)
     if (initialAnswer === null || initialAnswer === undefined) {
         setSelectedValue(undefined);
         setTextAnswer("");
     }
   }, [initialAnswer, question.id, question.type]);
 
-  const handleNext = () => {
+  const handleNextInternal = () => { // Renamed to avoid confusion with onNext prop
     let answer;
     if (question.type === "multiple-choice" || question.type === "rating") {
       answer = selectedValue;
     } else if (question.type === "text") {
       answer = textAnswer;
     }
-    // Pass undefined if no answer is selected (for skip logic)
-    onAnswer(answer); 
-    onNext();
-    // Don't reset selectedValue/textAnswer here, useEffect will handle it based on initialAnswer for next card
+    onNext(answer); // Pass the answer directly
   };
 
   const handlePrevious = () => {
     onPrevious();
-    // Don't reset selectedValue/textAnswer here either
   }
 
   const renderQuestionInput = () => {
@@ -122,7 +115,7 @@ export default function SurveyCard({
         <Button variant="outline" onClick={handlePrevious} disabled={isFirstQuestion}>
           <ChevronLeft className="mr-2 h-4 w-4" /> Previous
         </Button>
-        <Button onClick={handleNext} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+        <Button onClick={handleNextInternal} className="bg-accent hover:bg-accent/90 text-accent-foreground">
           {isLastQuestion ? "Finish" : "Next"} <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>

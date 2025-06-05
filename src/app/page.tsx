@@ -21,7 +21,7 @@ import {
   updateDoc, 
   getDoc,
   addDoc,
-  writeBatch,
+  writeBatch, // Not used yet, but good to have for batch operations
   limit, 
   QueryConstraint
 } from 'firebase/firestore';
@@ -30,7 +30,6 @@ export default function HomePage() {
   const { user } = useAuth(); 
   const [publicCards, setPublicCards] = useState<Survey[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [userSubmittedAnswers, setUserSubmittedAnswers] = useState<Record<string, any>>({}); // Local answers before showing stats
   const [allCardsViewed, setAllCardsViewed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [statsForCard, setStatsForCard] = useState<Survey | null>(null);
@@ -41,7 +40,6 @@ export default function HomePage() {
     setAllCardsViewed(false);
     setCurrentCardIndex(0);
     setStatsForCard(null);
-    setUserSubmittedAnswers({});
     setUserCardInteractions({});
 
     try {
@@ -67,20 +65,22 @@ export default function HomePage() {
 
       if (user && fetchedSurveys.length > 0) {
         const surveyIds = fetchedSurveys.map(s => s.id);
-        const interactionsQuery = query(
-          collection(db, "userSurveyAnswers"),
-          where("userId", "==", user.id),
-          where("surveyId", "in", surveyIds)
-        );
-        const interactionsSnapshot = await getDocs(interactionsQuery);
-        const interactionsMap: Record<string, UserSurveyAnswer & { docId: string }> = {};
-        interactionsSnapshot.forEach(docSnap => {
-          interactionsMap[docSnap.data().surveyId] = { 
-            ...(docSnap.data() as UserSurveyAnswer), 
-            docId: docSnap.id 
-          };
-        });
-        setUserCardInteractions(interactionsMap);
+        if (surveyIds.length > 0) { // Check if surveyIds is not empty
+          const interactionsQuery = query(
+            collection(db, "userSurveyAnswers"),
+            where("userId", "==", user.id),
+            where("surveyId", "in", surveyIds)
+          );
+          const interactionsSnapshot = await getDocs(interactionsQuery);
+          const interactionsMap: Record<string, UserSurveyAnswer & { docId: string }> = {};
+          interactionsSnapshot.forEach(docSnap => {
+            interactionsMap[docSnap.data().surveyId] = { 
+              ...(docSnap.data() as UserSurveyAnswer), 
+              docId: docSnap.id 
+            };
+          });
+          setUserCardInteractions(interactionsMap);
+        }
       }
 
       if (fetchedSurveys.length === 0) {
@@ -97,32 +97,25 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchSurveyData();
-  }, [user]); // Re-fetch if user logs in/out to get their interactions
+  }, [user]);
 
-  const handleAnswerSubmission = (answer: any) => {
-    if (publicCards.length > 0 && publicCards[currentCardIndex] && publicCards[currentCardIndex].questions) {
-      const currentQuestionId = publicCards[currentCardIndex].questions![0].id;
-      setUserSubmittedAnswers(prev => ({ ...prev, [currentQuestionId]: answer }));
-    }
-  };
+  // Removed handleAnswerSubmission and userSubmittedAnswers state
 
-  const handleCardInteractionCompletion = async () => {
+  const handleCardInteractionCompletion = async (submittedAnswer?: any) => {
     if (publicCards.length === 0 || !publicCards[currentCardIndex]) return;
 
     const currentSurvey = publicCards[currentCardIndex];
     const currentQuestion = currentSurvey.questions?.[0];
     if (!currentQuestion) {
-      proceedToNextCard(); // Should not happen with valid data
+      proceedToNextCard(); 
       return;
     }
 
-    const submittedAnswer = userSubmittedAnswers[currentQuestion.id]; // This is the new answer/skip
     const existingUserInteraction = user ? userCardInteractions[currentSurvey.id] : undefined;
     
     const surveyRef = doc(db, "surveys", currentSurvey.id);
     const surveyStatUpdates: Record<string, any> = { updatedAt: serverTimestamp() };
 
-    // 1. Adjust stats based on previous interaction (if any)
     if (existingUserInteraction) {
       if (existingUserInteraction.isSkipped) {
         surveyStatUpdates.skipCount = increment(-1);
@@ -132,25 +125,25 @@ export default function HomePage() {
       }
     }
 
-    // 2. Apply new interaction to stats
-    if (submittedAnswer !== undefined) { // User provided an answer
+    if (submittedAnswer !== undefined) {
       surveyStatUpdates.responses = increment(surveyStatUpdates.responses ? surveyStatUpdates.responses.operand + 1 : 1);
       if (currentSurvey.optionCounts?.hasOwnProperty(submittedAnswer)) {
         surveyStatUpdates[`optionCounts.${submittedAnswer}`] = increment(
-           currentSurvey.optionCounts.hasOwnProperty(submittedAnswer) && surveyStatUpdates[`optionCounts.${submittedAnswer}`] 
+           (currentSurvey.optionCounts.hasOwnProperty(submittedAnswer) && surveyStatUpdates[`optionCounts.${submittedAnswer}`]) 
            ? surveyStatUpdates[`optionCounts.${submittedAnswer}`].operand + 1 
            : 1
         );
+      } else if (currentSurvey.questions && currentSurvey.questions[0]?.type === "multiple-choice") {
+        // Handle case where optionCounts might not exist for a new option (should ideally be pre-initialized)
+         surveyStatUpdates[`optionCounts.${submittedAnswer}`] = increment(1);
       }
-    } else { // User skipped
+    } else { 
       surveyStatUpdates.skipCount = increment(surveyStatUpdates.skipCount ? surveyStatUpdates.skipCount.operand + 1 : 1);
     }
     
     try {
-      // Batch Firestore writes if possible, or sequence them
       await updateDoc(surveyRef, surveyStatUpdates);
 
-      // 3. Record/Update user's specific interaction
       if (user) {
         const interactionData: Omit<UserSurveyAnswer, 'id' | 'answeredAt'> & { answeredAt: any } = {
           userId: user.id,
@@ -165,18 +158,17 @@ export default function HomePage() {
           await updateDoc(doc(db, "userSurveyAnswers", existingUserInteraction.docId), interactionData);
           setUserCardInteractions(prev => ({
             ...prev,
-            [currentSurvey.id]: { ...interactionData, docId: existingUserInteraction.docId, answeredAt: new Date() } // Update local state
+            [currentSurvey.id]: { ...interactionData, docId: existingUserInteraction.docId, answeredAt: new Date() } 
           }));
         } else {
           const newDocRef = await addDoc(collection(db, "userSurveyAnswers"), interactionData);
           setUserCardInteractions(prev => ({
             ...prev,
-            [currentSurvey.id]: { ...interactionData, docId: newDocRef.id, answeredAt: new Date() } // Update local state
+            [currentSurvey.id]: { ...interactionData, docId: newDocRef.id, answeredAt: new Date() } 
           }));
         }
       }
       
-      // 4. Fetch updated survey for stats display (or calculate optimistically)
       const updatedSurveyDoc = await getDoc(surveyRef);
       let updatedCardForStatsDisplay: Survey | null = null;
       if (updatedSurveyDoc.exists()) {
@@ -187,29 +179,18 @@ export default function HomePage() {
             createdAt: (data.createdAt as Timestamp)?.toDate(),
             updatedAt: (data.updatedAt as Timestamp)?.toDate(),
           } as Survey;
-
-          // Optimistically update the card in the publicCards array for next render if user revisits
           setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedCardForStatsDisplay! : card));
       }
-      setStatsForCard(updatedCardForStatsDisplay || currentSurvey); // Fallback to currentSurvey if fetch fails
+      setStatsForCard(updatedCardForStatsDisplay || currentSurvey); 
 
     } catch (error) {
       console.error("Error updating card/interaction:", error);
-      // Potentially show an error toast to the user
-      // For now, show stats based on local attempt if any optimistic update was done, or currentSurvey
       setStatsForCard(currentSurvey); 
     }
-
-    // Clear submitted answer for the current question
-    setUserSubmittedAnswers(prevAns => {
-      const newAns = {...prevAns};
-      delete newAns[currentQuestion.id];
-      return newAns;
-    });
   };
 
   const proceedToNextCard = () => {
-    setStatsForCard(null); // Hide stats
+    setStatsForCard(null); 
     if (currentCardIndex < publicCards.length - 1) {
       setCurrentCardIndex(prevIndex => prevIndex + 1);
     } else {
@@ -296,8 +277,26 @@ export default function HomePage() {
   const currentQuestion = currentSurvey?.questions?.[0]; 
   const currentUserInitialAnswer = user ? userCardInteractions[currentSurvey?.id]?.answerValue : undefined;
 
-
   if (!currentSurvey || !currentQuestion) {
+    // This can happen briefly if publicCards is empty after fetch or if data is malformed
+    // Or if currentCardIndex is out of bounds (though logic should prevent this)
+    if (isLoading) return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading public cards...</p></div>;
+    if (publicCards.length === 0 && !isLoading) {
+        // This state is handled by the "allCardsViewed" block above, but as a fallback:
+        return (
+             <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-10rem)] space-y-6 px-4">
+                <Card className="p-6 md:p-10 shadow-xl w-full max-w-md">
+                  <CardHeader><CardTitle className="text-2xl font-headline text-primary">No Public Cards Yet!</CardTitle></CardHeader>
+                  <CardContent>
+                    <CardDescription className="text-md mb-6">Check back later for engaging public survey cards, or create your own.</CardDescription>
+                    <Button size="lg" asChild className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+                      <Link href={user ? "/dashboard" : "/survey/create"}>{user ? "Go to Your Dashboard" : "Or Create Your Own Survey"}</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+            </div>
+        );
+    }
     return <div className="text-center py-10 text-muted-foreground">Loading card data or no question available...</div>;
   }
 
@@ -314,8 +313,7 @@ export default function HomePage() {
           question={currentQuestion}
           questionNumber={1}
           totalQuestions={1}
-          onAnswer={handleAnswerSubmission}
-          onNext={handleCardInteractionCompletion} 
+          onNext={handleCardInteractionCompletion} // Pass the answer directly
           onPrevious={() => {}} 
           isFirstQuestion={true}
           isLastQuestion={true}
@@ -332,3 +330,4 @@ export default function HomePage() {
     </div>
   );
 }
+
