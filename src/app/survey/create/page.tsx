@@ -41,10 +41,10 @@ export default function CreateSurveyStep1Page() {
   const form = useForm<Step1FormValues>({
     resolver: zodResolver(surveyCreationStep1Schema),
     defaultValues: { 
-      title: surveyData.title || "",
+      title: surveyData.title || "", // Will be unused for single-card but schema expects it
       description: surveyData.description || "",
-      surveyType: surveyData.surveyType || "card-deck",
-      privacy: surveyData.privacy || "public",
+      surveyType: "single-card", // Default to single-card
+      privacy: surveyData.privacy || "public", // Will be unused for single-card
     },
   });
 
@@ -55,74 +55,64 @@ export default function CreateSurveyStep1Page() {
       router.push('/login?redirect=/survey/create');
       return; 
     }
-    
-    const effectiveSurveyType = surveyData.surveyType || "card-deck";
+    // Force single-card type for now
+    const effectiveSurveyType = "single-card";
 
     form.reset({
-        title: (effectiveSurveyType === "single-card") ? "" : (surveyData.title || ""),
+        title: "", // Not used for single-card
         description: surveyData.description || "",
         surveyType: effectiveSurveyType,
-        privacy: (effectiveSurveyType === "single-card") ? undefined : (surveyData.privacy || "public"),
+        privacy: undefined, // Not used for single-card
     });
+    // Also update context if it's not already single-card
+     if (surveyData.surveyType !== "single-card") {
+        updateStep1Data({
+            surveyType: "single-card",
+            title: undefined,
+            privacy: undefined,
+            description: surveyData.description, // preserve description
+        });
+    }
+
   }, [
     user, 
     authLoading, 
     router, 
-    surveyData.title, 
-    surveyData.description, 
-    surveyData.surveyType, 
-    surveyData.privacy, 
-    form 
+    surveyData.description, // only description matters for form reset under single-card
+    surveyData.surveyType, // to check if context needs update
+    form,
+    updateStep1Data // Added updateStep1Data to dependencies
   ]);
 
   useEffect(() => {
-    const currentFormValues = form.getValues();
-    let dataToUpdate: Partial<SurveyCreationData> = {
-        surveyType: watchedSurveyType,
-        description: currentFormValues.description,
-    };
-
-    if (watchedSurveyType === "single-card") {
-      if (form.getValues("title") !== "") form.setValue("title", ""); 
-      if (form.getValues("privacy") !== undefined) form.setValue("privacy", undefined);
-      
-      dataToUpdate.title = undefined;
-      dataToUpdate.privacy = undefined;
-    } else if (watchedSurveyType === "card-deck") {
-      dataToUpdate.title = currentFormValues.title;
-      if (!currentFormValues.privacy) {
-          form.setValue("privacy", "public"); 
-          dataToUpdate.privacy = "public";
-      } else {
-          dataToUpdate.privacy = currentFormValues.privacy as "public" | "invite-only";
-      }
+    // This effect primarily ensures context is in sync if user somehow changes type,
+    // but UI will restrict to single-card.
+    if (watchedSurveyType !== "single-card") {
+      // If for some reason watchedSurveyType changes from single-card, reset it.
+      // This is a safeguard as UI is disabled.
+      form.setValue("surveyType", "single-card");
+      updateStep1Data({ surveyType: "single-card", title: undefined, privacy: undefined });
+    } else {
+      // Ensure title and privacy are not set for single-card in context
+      updateStep1Data({ 
+        surveyType: "single-card", 
+        title: undefined, 
+        privacy: undefined,
+        description: form.getValues("description") 
+      });
     }
-    
-    updateStep1Data(dataToUpdate);
-
   }, [watchedSurveyType, form, updateStep1Data]);
 
 
   function onSubmit(data: Step1FormValues) {
     setFormProcessing(true);
-    if (data.surveyType === "add-to-existing") {
-        toast({ title: "Feature Not Implemented", description: "'Add to Existing Deck' is coming soon!", variant: "default" });
-        setFormProcessing(false);
-        return;
-    }
     
     let dataToSubmit: Partial<SurveyCreationData> = {
-        surveyType: data.surveyType,
+        surveyType: "single-card", // Force single-card
         description: data.description,
+        title: undefined, 
+        privacy: undefined, 
     };
-
-    if (data.surveyType === "card-deck") {
-        dataToSubmit.title = data.title;
-        dataToSubmit.privacy = data.privacy;
-    } else if (data.surveyType === "single-card") {
-        dataToSubmit.title = undefined; 
-        dataToSubmit.privacy = undefined; 
-    }
     
     updateStep1Data(dataToSubmit); 
     setCurrentStep(2);
@@ -141,7 +131,7 @@ export default function CreateSurveyStep1Page() {
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-2xl font-headline">Create New Survey - Step 1 of 3</CardTitle>
-        <CardDescription>Select the type of survey and provide basic details.</CardDescription>
+        <CardDescription>Define your single public survey card.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -151,34 +141,34 @@ export default function CreateSurveyStep1Page() {
               name="surveyType"
               render={({ field }) => (
                 <FormItem className="space-y-3">
-                  <FormLabel className="text-lg">1. What type of survey are you creating?</FormLabel>
+                  <FormLabel className="text-lg">1. Survey Type (Single Card Only)</FormLabel>
                   <FormControl>
                     <RadioGroup
                       onValueChange={(value) => {
-                        field.onChange(value);
+                        // Field change is locked to single-card by UI and effects
+                         if (value === "single-card") field.onChange(value);
                       }}
-                      value={field.value || "card-deck"} 
-                      className="flex flex-col space-y-2" // Adjusted for consistent stacking of options
+                      value={"single-card"} // Locked to single-card
+                      className="flex flex-col space-y-2"
                     >
-                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors flex-1">
-                        <RadioGroupItem value="single-card" id={`${field.name}-single-card`} />
-                        <div className="cursor-pointer flex-1" onClick={() => field.onChange("single-card")}>
-                            <Label htmlFor={`${field.name}-single-card`} className="font-medium cursor-pointer">Single Card</Label>
+                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md bg-muted/80 flex-1">
+                        <RadioGroupItem value="single-card" id={`${field.name}-single-card`} checked={true} />
+                        <div className="cursor-default flex-1">
+                            <Label htmlFor={`${field.name}-single-card`} className="font-medium cursor-default">Single Card (Public)</Label>
                             <p className="text-xs text-muted-foreground">One question, shared publicly, no title needed.</p>
                         </div>
                       </FormItem>
-                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors flex-1">
-                        <RadioGroupItem value="card-deck" id={`${field.name}-card-deck`} />
-                         <div className="cursor-pointer flex-1" onClick={() => field.onChange("card-deck")}>
-                            <Label htmlFor={`${field.name}-card-deck`} className="font-medium cursor-pointer">Card Deck</Label>
-                            <p className="text-xs text-muted-foreground">A series of questions, requires a title.</p>
+                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md bg-muted/30 cursor-not-allowed flex-1 opacity-50">
+                        <RadioGroupItem value="card-deck" id={`${field.name}-card-deck`} disabled />
+                         <div className="opacity-50 flex-1">
+                            <Label htmlFor={`${field.name}-card-deck`} className="font-medium text-muted-foreground cursor-not-allowed">Card Deck (Coming Soon)</Label>
+                            <p className="text-xs text-muted-foreground cursor-not-allowed">A series of questions, requires a title.</p>
                         </div>
                       </FormItem>
-                      {/* Moved the "add-to-existing" FormItem inside the RadioGroup */}
-                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md bg-muted/30 cursor-not-allowed flex-1 mt-2">
+                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md bg-muted/30 cursor-not-allowed flex-1 opacity-50">
                         <RadioGroupItem value="add-to-existing" disabled id={`${field.name}-add-to-existing`} />
                         <div className="opacity-50 flex-1">
-                           <Label htmlFor={`${field.name}-add-to-existing`} className="font-medium text-muted-foreground cursor-not-allowed">Add to Existing Deck</Label>
+                           <Label htmlFor={`${field.name}-add-to-existing`} className="font-medium text-muted-foreground cursor-not-allowed">Add to Existing Deck (Coming Soon)</Label>
                            <p className="text-xs text-muted-foreground cursor-not-allowed">Coming soon.</p>
                         </div>
                       </FormItem>
@@ -188,32 +178,16 @@ export default function CreateSurveyStep1Page() {
                 </FormItem>
               )}
             />
-
-            {watchedSurveyType === "card-deck" && (
-              <FormField
-                control={form.control}
-                name="title"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-lg">2. Survey Title (for Card Deck)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., Customer Feedback Q3" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
             
             <FormField
               control={form.control}
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-lg">{watchedSurveyType === "card-deck" ? "3.": "2."} Description (Optional)</FormLabel>
+                  <FormLabel className="text-lg">2. Card Description (Optional)</FormLabel>
                   <FormControl>
                     <Textarea 
-                        placeholder={watchedSurveyType === "single-card" ? "Describe your single card's purpose (e.g., 'Quick poll about daily habits')" : "Briefly describe your card deck."} 
+                        placeholder={"Describe your single card's purpose (e.g., 'Quick poll about daily habits')"} 
                         {...field} 
                     />
                   </FormControl>
@@ -222,42 +196,13 @@ export default function CreateSurveyStep1Page() {
               )}
             />
             
-            {watchedSurveyType === "card-deck" && (
-              <FormField
-                control={form.control}
-                name="privacy"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-lg">4. Privacy Settings (for Card Deck)</FormLabel>
-                    <Select 
-                        onValueChange={field.onChange} 
-                        value={field.value || "public"}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select privacy level" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="public">Public (Anyone can respond)</SelectItem>
-                        <SelectItem value="invite-only">Invite-Only (Only specific users)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Control who can access and respond to your card deck.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
             <div className="flex justify-end">
                 <Button 
                     type="submit" 
                     className="bg-primary hover:bg-primary/90 text-primary-foreground" 
-                    disabled={formProcessing || authLoading || watchedSurveyType === "add-to-existing"}
+                    disabled={formProcessing || authLoading}
                 >
-                 Next: Add Questions <ArrowRight className="ml-2 h-5 w-5" />
+                 Next: Add Question <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
             </div>
           </form>
@@ -266,5 +211,3 @@ export default function CreateSurveyStep1Page() {
     </Card>
   );
 }
-
-    
