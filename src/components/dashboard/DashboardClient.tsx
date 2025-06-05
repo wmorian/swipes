@@ -5,10 +5,25 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, ListChecks, BarChart2, Edit3, Share2, Trash2, Users, FileText } from 'lucide-react';
+import { 
+  PlusCircle, 
+  ListChecks, 
+  BarChart2, 
+  Edit3, 
+  Share2, 
+  Trash2, 
+  Users, 
+  FileText,
+  FilePlus, // New icon for single card
+  Layers,   // New icon for new deck
+  ListPlus, // New icon for add to existing
+  X         // New icon for closing EFAB
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import type { Survey } from '@/types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast } from '@/hooks/use-toast';
 
 // Mock data - replace with actual data fetching
 const mockSurveys: Survey[] = [
@@ -26,8 +41,10 @@ const mockActivity = [
 export default function DashboardClient() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [activity, setActivity] = useState<typeof mockActivity>([]);
+  const [isFabOpen, setIsFabOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -62,12 +79,18 @@ export default function DashboardClient() {
     return 'Just now';
   };
 
+  const handleComingSoon = (featureName: string) => {
+    toast({
+      title: "Coming Soon!",
+      description: `${featureName} will be available in a future update.`,
+    });
+    setIsFabOpen(false);
+  };
 
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold font-headline text-primary">My Dashboard</h1>
-        {/* Button removed from here */}
       </div>
 
       {/* Stats Overview */}
@@ -171,16 +194,80 @@ export default function DashboardClient() {
         </CardContent>
       </Card>
 
-      {/* Floating Action Button */}
-      <Button
-        asChild
-        className="fixed bottom-6 right-6 md:bottom-8 md:right-8 z-50 h-16 w-16 rounded-full p-0 shadow-xl bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center"
-        aria-label="Create New Survey"
-      >
-        <Link href="/survey/create">
-          <PlusCircle className="h-8 w-8" />
-        </Link>
-      </Button>
+      {/* Expanding Floating Action Button */}
+      <div className="fixed bottom-6 right-6 md:bottom-8 md:right-8 z-50 flex flex-col items-center">
+        {/* Sub-action buttons container */}
+        <div 
+          className={`flex flex-col items-center space-y-2 mb-3 transition-all duration-300 ease-in-out ${
+            isFabOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+          }`}
+        >
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="secondary"
+                  className="h-12 w-12 rounded-full p-0 shadow-md flex items-center justify-center"
+                  onClick={() => handleComingSoon("Adding to existing decks")}
+                  aria-label="Add to existing deck"
+                >
+                  <ListPlus className="h-6 w-6" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-background border shadow-md text-foreground">
+                <p>Add to Existing Deck</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                 <Button
+                  variant="secondary"
+                  className="h-12 w-12 rounded-full p-0 shadow-md flex items-center justify-center"
+                  onClick={() => handleComingSoon("Creating new survey decks")}
+                  aria-label="Create new survey deck"
+                >
+                  <Layers className="h-6 w-6" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-background border shadow-md text-foreground">
+                <p>Create New Deck</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  asChild
+                  variant="secondary"
+                  className="h-12 w-12 rounded-full p-0 shadow-md flex items-center justify-center"
+                  aria-label="Create single survey card"
+                >
+                  <Link href="/survey/create" onClick={() => setIsFabOpen(false)}>
+                    <FilePlus className="h-6 w-6" />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-background border shadow-md text-foreground">
+                <p>Create Single Card</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        {/* Main FAB toggle button */}
+        <Button
+          className="h-16 w-16 rounded-full p-0 shadow-xl bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center"
+          aria-label={isFabOpen ? "Close create options" : "Open create options"}
+          onClick={() => setIsFabOpen(!isFabOpen)}
+        >
+          {isFabOpen ? <X className="h-8 w-8" /> : <PlusCircle className="h-8 w-8" />}
+        </Button>
+      </div>
     </div>
   );
 }
