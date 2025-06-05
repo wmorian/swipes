@@ -38,7 +38,7 @@ const getDefaultQuestion = (): SurveyQuestionContext => ({
   id: `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
   text: "", 
   type: "multiple-choice", 
-  options: [""] // Start with one empty option string
+  options: ["", ""] // Start with two empty option strings
 });
 
 const defaultSurveyData: SurveyCreationData = {

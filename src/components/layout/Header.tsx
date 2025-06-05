@@ -15,23 +15,36 @@ export default function Header() {
 
   const commonNavLinks = (isMobile: boolean) => (
     <>
-      <Button variant="ghost" asChild onClick={() => isMobile && setIsSheetOpen(false)}>
-        <Link href="/" className={`flex items-center gap-1 ${isMobile ? 'text-lg py-2' : ''}`}>
-          <Home size={isMobile ? 20 : 18} /> Home
-        </Link>
-      </Button>
+      {isMobile ? (
+        <Button variant="ghost" size="icon" asChild onClick={() => setIsSheetOpen(false)} aria-label="Home">
+          <Link href="/"> <Home size={24} /> </Link>
+        </Button>
+      ) : (
+        <Button variant="ghost" asChild onClick={() => setIsSheetOpen(false)}>
+          <Link href="/" className="flex items-center gap-1"> <Home size={18} /> Home </Link>
+        </Button>
+      )}
+
       {user && (
         <>
-          <Button variant="ghost" asChild onClick={() => isMobile && setIsSheetOpen(false)}>
-            <Link href="/dashboard" className={`flex items-center gap-1 ${isMobile ? 'text-lg py-2' : ''}`}>
-              <UserCircle size={isMobile ? 20 : 18} /> Dashboard
-            </Link>
-          </Button>
-          <Button variant="ghost" asChild onClick={() => isMobile && setIsSheetOpen(false)}>
-            <Link href="/survey/create" className={`flex items-center gap-1 ${isMobile ? 'text-lg py-2' : ''}`}>
-              <PlusSquare size={isMobile ? 20 : 18} /> Create Survey
-            </Link>
-          </Button>
+          {isMobile ? (
+            <Button variant="ghost" size="icon" asChild onClick={() => setIsSheetOpen(false)} aria-label="Dashboard">
+              <Link href="/dashboard"> <UserCircle size={24} /> </Link>
+            </Button>
+          ) : (
+            <Button variant="ghost" asChild onClick={() => setIsSheetOpen(false)}>
+              <Link href="/dashboard" className="flex items-center gap-1"> <UserCircle size={18} /> Dashboard </Link>
+            </Button>
+          )}
+          {isMobile ? (
+            <Button variant="ghost" size="icon" asChild onClick={() => setIsSheetOpen(false)} aria-label="Create Survey">
+              <Link href="/survey/create/questions"> <PlusSquare size={24} /> </Link>
+            </Button>
+          ) : (
+            <Button variant="ghost" asChild onClick={() => setIsSheetOpen(false)}>
+              <Link href="/survey/create/questions" className="flex items-center gap-1"> <PlusSquare size={18} /> Create Survey </Link>
+            </Button>
+          )}
         </>
       )}
     </>
@@ -45,10 +58,10 @@ export default function Header() {
         </div>
       ) : (
         <div className={`flex items-center gap-2 ${isMobile ? 'flex-col space-y-2 w-full pt-4 border-t border-border' : ''}`}>
-          <Button variant="outline" asChild className={isMobile ? 'w-full' : ''} onClick={() => isMobile && setIsSheetOpen(false)}>
+          <Button variant="outline" asChild className={isMobile ? 'w-full' : ''} onClick={() => setIsSheetOpen(false)}>
             <Link href="/login">Login</Link>
           </Button>
-          <Button asChild className={`bg-accent hover:bg-accent/90 text-accent-foreground ${isMobile ? 'w-full' : ''}`} onClick={() => isMobile && setIsSheetOpen(false)}>
+          <Button asChild className={`bg-accent hover:bg-accent/90 text-accent-foreground ${isMobile ? 'w-full' : ''}`} onClick={() => setIsSheetOpen(false)}>
             <Link href="/signup">Sign Up</Link>
           </Button>
         </div>
@@ -79,23 +92,23 @@ export default function Header() {
                 <span className="sr-only">Open menu</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[280px] sm:w-[320px] p-0 flex flex-col">
-              <SheetHeader className="p-4 border-b">
-                <SheetTitle>
+            <SheetContent side="left" className="w-[80px] sm:w-[90px] p-0 flex flex-col items-center">
+              <SheetHeader className="p-4 border-b w-full">
+                <SheetTitle className="flex justify-center">
                   <Link 
                     href="/" 
-                    className="text-xl font-bold text-primary font-headline flex items-center gap-2"
+                    className="text-xl font-bold text-primary font-headline flex items-center"
                     onClick={() => setIsSheetOpen(false)}
                   >
-                    <ActivitySquare className="h-6 w-6 text-accent" />
-                    CardSurvey
+                    <ActivitySquare className="h-7 w-7 text-accent" />
+                    {/* <span className="sr-only">CardSurvey</span> */}
                   </Link>
                 </SheetTitle>
               </SheetHeader>
-              <nav className="flex flex-col gap-1 p-4 flex-grow">
+              <nav className="flex flex-col gap-3 p-4 flex-grow items-center">
                 {commonNavLinks(true)}
               </nav>
-              <div className="p-4">
+              <div className="p-4 w-full flex justify-center">
                 {authActions(true)}
               </div>
             </SheetContent>
