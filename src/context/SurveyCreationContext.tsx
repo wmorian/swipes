@@ -3,7 +3,7 @@
 "use client";
 
 import type { Survey, Question } from '@/types';
-import React, { createContext, useContext, useState, ReactNode, Dispatch, SetStateAction } from 'react';
+import React, { createContext, useContext, useState, ReactNode, Dispatch, SetStateAction, useCallback } from 'react';
 import * as z from "zod";
 
 // Re-define schema parts here or import if sharable and stable
@@ -76,65 +76,79 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
   const [surveyData, setSurveyData] = useState<SurveyCreationData>(defaultSurveyData);
   const [currentStep, setCurrentStep] = useState(1);
 
-  const updateStep1Data = (data: Partial<Pick<SurveyCreationData, 'surveyType' | 'title' | 'description' | 'privacy'>>) => {
-    setSurveyData(prev => ({
-      ...prev,
-      ...data,
-      // Reset questions if type changes to single-card and there's more than one question
-      questions: data.surveyType === 'single-card' && prev.questions.length !== 1 
-                    ? [{ text: "", type: "multiple-choice", options: [""] }] 
-                    : prev.questions,
-      // Ensure at least one question if type changes and questions are empty
-      questions: (data.surveyType && prev.questions.length === 0)
-                    ? [{ text: "", type: "multiple-choice", options: [""] }]
-                    : prev.questions,
-      // If changing to single-card, clear title (handled by form logic, but good to enforce here too)
-      title: data.surveyType === 'single-card' ? undefined : (data.title !== undefined ? data.title : prev.title),
-      // If changing to single-card, clear privacy
-      privacy: data.surveyType === 'single-card' ? undefined : (data.privacy !== undefined ? data.privacy : prev.privacy),
-    }));
-  };
+  const updateStep1Data = useCallback((data: Partial<Pick<SurveyCreationData, 'surveyType' | 'title' | 'description' | 'privacy'>>) => {
+    setSurveyData(prev => {
+      const newSurveyType = data.surveyType !== undefined ? data.surveyType : prev.surveyType;
+      let newQuestions = prev.questions;
 
-  const addQuestion = (question: z.infer<typeof questionSchema>) => {
-    if (surveyData.surveyType === "single-card" && surveyData.questions.length >= 1) {
-        // Optionally, show a toast or message here
-        console.warn("Cannot add more than one question to a single-card survey.");
-        return;
-    }
-    setSurveyData(prev => ({
-      ...prev,
-      questions: [...prev.questions, question],
-    }));
-  };
+      // Handle question array changes when surveyType switches
+      if (data.surveyType === 'single-card' && prev.surveyType !== 'single-card') {
+        // Switching TO single-card: reset questions to one default
+        newQuestions = [{ text: "", type: "multiple-choice", options: [""] }];
+      } else if (data.surveyType === 'single-card') {
+        // Already single-card: ensure it's just one question (e.g. defensive coding)
+        if (newQuestions.length === 0) {
+            newQuestions = [{ text: "", type: "multiple-choice", options: [""] }];
+        } else if (newQuestions.length > 1) {
+            newQuestions = [newQuestions[0]]; // Keep first, or reset: [{ text: "", type: "multiple-choice", options: [""] }];
+        }
+      } else if (newSurveyType !== 'single-card' && newQuestions.length === 0) {
+        // For non-single-card types (like card-deck), ensure at least one question if array is empty
+        newQuestions = [{ text: "", type: "multiple-choice", options: [""] }];
+      }
 
-  const updateQuestion = (index: number, question: z.infer<typeof questionSchema>) => {
+      return {
+        ...prev,
+        ...data, // Applies updates from 'data' (surveyType, title, description, privacy from form)
+        questions: newQuestions,
+        // Ensure title and privacy are correctly set according to the final surveyType
+        title: newSurveyType === 'single-card' ? undefined : (data.title !== undefined ? data.title : prev.title),
+        privacy: newSurveyType === 'single-card' ? undefined : (data.privacy !== undefined ? data.privacy : prev.privacy),
+      };
+    });
+  }, [setSurveyData]);
+
+  const addQuestion = useCallback((question: z.infer<typeof questionSchema>) => {
+    setSurveyData(prev => {
+        if (prev.surveyType === "single-card" && prev.questions.length >= 1) {
+            console.warn("Cannot add more than one question to a single-card survey.");
+            return prev;
+        }
+        return {
+            ...prev,
+            questions: [...prev.questions, question],
+        };
+    });
+  }, [setSurveyData]);
+
+  const updateQuestion = useCallback((index: number, question: z.infer<typeof questionSchema>) => {
     setSurveyData(prev => ({
       ...prev,
       questions: prev.questions.map((q, i) => (i === index ? question : q)),
     }));
-  };
+  }, [setSurveyData]);
 
-  const removeQuestion = (index: number) => {
-     if (surveyData.surveyType === "single-card") {
-        // Optionally, show a toast or message here
-        console.warn("Cannot remove the question from a single-card survey.");
-        return;
-    }
-    if (surveyData.questions.length <= 1) {
-        // Optionally, show a toast or message
-        console.warn("Survey must have at least one question.");
-        return;
-    }
-    setSurveyData(prev => ({
-      ...prev,
-      questions: prev.questions.filter((_, i) => i !== index),
-    }));
-  };
+  const removeQuestion = useCallback((index: number) => {
+    setSurveyData(prev => {
+        if (prev.surveyType === "single-card") {
+            console.warn("Cannot remove the question from a single-card survey.");
+            return prev;
+        }
+        if (prev.questions.length <= 1) {
+            console.warn("Survey must have at least one question.");
+            return prev;
+        }
+        return {
+            ...prev,
+            questions: prev.questions.filter((_, i) => i !== index),
+        };
+    });
+  }, [setSurveyData]);
   
-  const resetSurveyCreation = () => {
+  const resetSurveyCreation = useCallback(() => {
     setSurveyData(defaultSurveyData);
     setCurrentStep(1);
-  };
+  }, [setSurveyData, setCurrentStep]);
 
   return (
     <SurveyCreationContext.Provider value={{ 

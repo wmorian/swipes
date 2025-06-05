@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useSurveyCreation, surveyCreationStep1Schema } from "@/context/SurveyCreationContext";
+import { useSurveyCreation, surveyCreationStep1Schema, type SurveyCreationData } from "@/context/SurveyCreationContext";
 import { ArrowRight } from "lucide-react";
 
 type Step1FormValues = z.infer<typeof surveyCreationStep1Schema>;
@@ -34,13 +34,13 @@ export default function CreateSurveyStep1Page() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const { surveyData, updateStep1Data, setCurrentStep, resetSurveyCreation } = useSurveyCreation();
+  const { surveyData, updateStep1Data, setCurrentStep } = useSurveyCreation();
   
   const [formProcessing, setFormProcessing] = useState(false);
 
   const form = useForm<Step1FormValues>({
     resolver: zodResolver(surveyCreationStep1Schema),
-    defaultValues: {
+    defaultValues: { // These defaults will be quickly overridden by useEffect if surveyData exists
       title: surveyData.title || "",
       description: surveyData.description || "",
       surveyType: surveyData.surveyType || "card-deck",
@@ -53,43 +53,62 @@ export default function CreateSurveyStep1Page() {
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login?redirect=/survey/create');
+      return; 
     }
-     // Initialize form with context data if user navigates back or on first load
-     // This also helps if context was reset and user comes back to this page
+    
+    const effectiveSurveyType = surveyData.surveyType || "card-deck";
+
     form.reset({
-        title: surveyData.title || "",
+        title: (effectiveSurveyType === "single-card") ? "" : (surveyData.title || ""),
         description: surveyData.description || "",
-        surveyType: surveyData.surveyType || "card-deck",
-        privacy: surveyData.privacy || "public",
+        surveyType: effectiveSurveyType,
+        // For single-card, privacy is not applicable on the form, so reset to undefined.
+        // For card-deck, use context value or default to 'public'.
+        privacy: (effectiveSurveyType === "single-card") ? undefined : (surveyData.privacy || "public"),
     });
-  }, [user, authLoading, router, surveyData, form]);
+  }, [
+    user, 
+    authLoading, 
+    router, 
+    surveyData.title, 
+    surveyData.description, 
+    surveyData.surveyType, 
+    surveyData.privacy, 
+    form.reset // form.reset is stable from RHF
+  ]);
 
   useEffect(() => {
-    // When surveyType changes, update context and form behavior
-    const currentTitle = form.getValues("title");
-    const currentPrivacy = form.getValues("privacy");
-    
+    // This effect synchronizes form field changes (especially surveyType) with the context.
+    const currentFormValues = form.getValues();
+    let dataToUpdate: Partial<SurveyCreationData> = {
+        surveyType: watchedSurveyType,
+        description: currentFormValues.description,
+    };
+
     if (watchedSurveyType === "single-card") {
-      form.setValue("title", undefined); // Clear title for single-card
-      form.setValue("privacy", undefined); // Clear privacy for single-card
-      updateStep1Data({ surveyType: watchedSurveyType, title: undefined, privacy: undefined });
+      // When type is single-card, title and privacy are not applicable/stored in context as such.
+      // The form fields for title/privacy are hidden or managed by conditional rendering.
+      // Ensure form values reflect this if they were set previously.
+      if (form.getValues("title") !== "") form.setValue("title", ""); 
+      if (form.getValues("privacy") !== undefined) form.setValue("privacy", undefined);
+      
+      dataToUpdate.title = undefined;
+      dataToUpdate.privacy = undefined;
     } else if (watchedSurveyType === "card-deck") {
-      if (!currentPrivacy) {
-          form.setValue("privacy", "public");
+      dataToUpdate.title = currentFormValues.title;
+      if (!currentFormValues.privacy) {
+          form.setValue("privacy", "public"); // Default privacy for new card-deck if not set
+          dataToUpdate.privacy = "public";
+      } else {
+          dataToUpdate.privacy = currentFormValues.privacy as "public" | "invite-only";
       }
-      // If title was cleared by switching from single-card, restore context or default
-      if (!currentTitle && surveyData.title && surveyData.surveyType === "card-deck") {
-          form.setValue("title", surveyData.title);
-      }
-      updateStep1Data({ 
-        surveyType: watchedSurveyType, 
-        title: form.getValues("title"),
-        privacy: form.getValues("privacy") || "public" 
-      });
-    } else {
-        updateStep1Data({ surveyType: watchedSurveyType });
     }
-  }, [watchedSurveyType, form, updateStep1Data, surveyData.title, surveyData.surveyType]);
+    // For "add-to-existing", specific logic for title/privacy would depend on selected deck.
+    // For now, it primarily updates surveyType and description.
+    
+    updateStep1Data(dataToUpdate);
+
+  }, [watchedSurveyType, form, updateStep1Data]);
 
 
   function onSubmit(data: Step1FormValues) {
@@ -100,23 +119,25 @@ export default function CreateSurveyStep1Page() {
         return;
     }
     
-    let dataToUpdate: Partial<typeof surveyData> = {
+    // Data should already be in sync with context due to the second useEffect.
+    // We can pass the validated form data directly.
+    let dataToSubmit: Partial<SurveyCreationData> = {
         surveyType: data.surveyType,
         description: data.description,
     };
 
     if (data.surveyType === "card-deck") {
-        dataToUpdate.title = data.title;
-        dataToUpdate.privacy = data.privacy;
+        dataToSubmit.title = data.title;
+        dataToSubmit.privacy = data.privacy;
     } else if (data.surveyType === "single-card") {
-        dataToUpdate.title = undefined;
-        dataToUpdate.privacy = undefined;
+        dataToSubmit.title = undefined; // Ensure title is undefined for single-card
+        dataToSubmit.privacy = undefined; // Ensure privacy is undefined for single-card
     }
     
-    updateStep1Data(dataToUpdate);
+    updateStep1Data(dataToSubmit); // Ensure context is fully up-to-date with validated data
     setCurrentStep(2);
     router.push("/survey/create/questions");
-    setFormProcessing(false);
+    // setFormProcessing(false); // router.push will unmount, so not strictly necessary here
   }
 
   if (authLoading) {
@@ -124,7 +145,6 @@ export default function CreateSurveyStep1Page() {
   }
 
   if (!user) {
-    // This message might be briefly visible before redirect effect kicks in
     return <div className="text-center py-10">Redirecting to login...</div>;
   }
 
@@ -147,23 +167,16 @@ export default function CreateSurveyStep1Page() {
                     <RadioGroup
                       onValueChange={(value) => {
                         field.onChange(value);
-                        // Trigger re-validation or side-effects if necessary
-                         if (value === "single-card") {
-                            form.setValue("title", ""); // Clear title for single-card
-                            form.setValue("privacy", undefined);
-                         } else if (value === "card-deck" && !form.getValues("privacy")) {
-                            form.setValue("privacy", "public");
-                         }
+                        // Additional logic handled by the second useEffect based on watchedSurveyType
                       }}
-                      value={field.value}
-                      defaultValue={field.value}
+                      value={field.value || "card-deck"} // Ensure a default value if field.value is undefined initially
                       className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-4"
                     >
                       <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors flex-1">
                         <FormControl>
                           <RadioGroupItem value="single-card" />
                         </FormControl>
-                        <div className="cursor-pointer">
+                        <div className="cursor-pointer" onClick={() => field.onChange("single-card")}>
                             <FormLabel className="font-medium cursor-pointer">Single Card</FormLabel>
                             <p className="text-xs text-muted-foreground">One question, shared publicly, no title needed.</p>
                         </div>
@@ -172,7 +185,7 @@ export default function CreateSurveyStep1Page() {
                         <FormControl>
                           <RadioGroupItem value="card-deck" />
                         </FormControl>
-                         <div className="cursor-pointer">
+                         <div className="cursor-pointer" onClick={() => field.onChange("card-deck")}>
                             <FormLabel className="font-medium cursor-pointer">Card Deck</FormLabel>
                             <p className="text-xs text-muted-foreground">A series of questions, requires a title.</p>
                         </div>
@@ -233,7 +246,10 @@ export default function CreateSurveyStep1Page() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-lg">4. Privacy Settings (for Card Deck)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || "public"} defaultValue={field.value || "public"}>
+                    <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value || "public"} // Ensure value is controlled
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select privacy level" />
