@@ -40,7 +40,7 @@ export default function CreateSurveyStep1Page() {
 
   const form = useForm<Step1FormValues>({
     resolver: zodResolver(surveyCreationStep1Schema),
-    defaultValues: { // These defaults will be quickly overridden by useEffect if surveyData exists
+    defaultValues: { 
       title: surveyData.title || "",
       description: surveyData.description || "",
       surveyType: surveyData.surveyType || "card-deck",
@@ -62,8 +62,6 @@ export default function CreateSurveyStep1Page() {
         title: (effectiveSurveyType === "single-card") ? "" : (surveyData.title || ""),
         description: surveyData.description || "",
         surveyType: effectiveSurveyType,
-        // For single-card, privacy is not applicable on the form, so reset to undefined.
-        // For card-deck, use context value or default to 'public'.
         privacy: (effectiveSurveyType === "single-card") ? undefined : (surveyData.privacy || "public"),
     });
   }, [
@@ -74,11 +72,10 @@ export default function CreateSurveyStep1Page() {
     surveyData.description, 
     surveyData.surveyType, 
     surveyData.privacy, 
-    form.reset // form.reset is stable from RHF
+    form // form.reset is stable from RHF, so form can be a dependency
   ]);
 
   useEffect(() => {
-    // This effect synchronizes form field changes (especially surveyType) with the context.
     const currentFormValues = form.getValues();
     let dataToUpdate: Partial<SurveyCreationData> = {
         surveyType: watchedSurveyType,
@@ -86,9 +83,6 @@ export default function CreateSurveyStep1Page() {
     };
 
     if (watchedSurveyType === "single-card") {
-      // When type is single-card, title and privacy are not applicable/stored in context as such.
-      // The form fields for title/privacy are hidden or managed by conditional rendering.
-      // Ensure form values reflect this if they were set previously.
       if (form.getValues("title") !== "") form.setValue("title", ""); 
       if (form.getValues("privacy") !== undefined) form.setValue("privacy", undefined);
       
@@ -97,14 +91,12 @@ export default function CreateSurveyStep1Page() {
     } else if (watchedSurveyType === "card-deck") {
       dataToUpdate.title = currentFormValues.title;
       if (!currentFormValues.privacy) {
-          form.setValue("privacy", "public"); // Default privacy for new card-deck if not set
+          form.setValue("privacy", "public"); 
           dataToUpdate.privacy = "public";
       } else {
           dataToUpdate.privacy = currentFormValues.privacy as "public" | "invite-only";
       }
     }
-    // For "add-to-existing", specific logic for title/privacy would depend on selected deck.
-    // For now, it primarily updates surveyType and description.
     
     updateStep1Data(dataToUpdate);
 
@@ -119,8 +111,6 @@ export default function CreateSurveyStep1Page() {
         return;
     }
     
-    // Data should already be in sync with context due to the second useEffect.
-    // We can pass the validated form data directly.
     let dataToSubmit: Partial<SurveyCreationData> = {
         surveyType: data.surveyType,
         description: data.description,
@@ -130,14 +120,13 @@ export default function CreateSurveyStep1Page() {
         dataToSubmit.title = data.title;
         dataToSubmit.privacy = data.privacy;
     } else if (data.surveyType === "single-card") {
-        dataToSubmit.title = undefined; // Ensure title is undefined for single-card
-        dataToSubmit.privacy = undefined; // Ensure privacy is undefined for single-card
+        dataToSubmit.title = undefined; 
+        dataToSubmit.privacy = undefined; 
     }
     
-    updateStep1Data(dataToSubmit); // Ensure context is fully up-to-date with validated data
+    updateStep1Data(dataToSubmit); 
     setCurrentStep(2);
     router.push("/survey/create/questions");
-    // setFormProcessing(false); // router.push will unmount, so not strictly necessary here
   }
 
   if (authLoading) {
@@ -145,6 +134,7 @@ export default function CreateSurveyStep1Page() {
   }
 
   if (!user) {
+    // This check is technically redundant due to useEffect, but good for clarity
     return <div className="text-center py-10">Redirecting to login...</div>;
   }
 
@@ -167,37 +157,30 @@ export default function CreateSurveyStep1Page() {
                     <RadioGroup
                       onValueChange={(value) => {
                         field.onChange(value);
-                        // Additional logic handled by the second useEffect based on watchedSurveyType
                       }}
-                      value={field.value || "card-deck"} // Ensure a default value if field.value is undefined initially
+                      value={field.value || "card-deck"} 
                       className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-4"
                     >
                       <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors flex-1">
-                        <FormControl>
-                          <RadioGroupItem value="single-card" />
-                        </FormControl>
-                        <div className="cursor-pointer" onClick={() => field.onChange("single-card")}>
-                            <FormLabel className="font-medium cursor-pointer">Single Card</FormLabel>
+                        <RadioGroupItem value="single-card" id={`${field.name}-single-card`} />
+                        <div className="cursor-pointer flex-1" onClick={() => field.onChange("single-card")}>
+                            <Label htmlFor={`${field.name}-single-card`} className="font-medium cursor-pointer">Single Card</Label>
                             <p className="text-xs text-muted-foreground">One question, shared publicly, no title needed.</p>
                         </div>
                       </FormItem>
                       <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors flex-1">
-                        <FormControl>
-                          <RadioGroupItem value="card-deck" />
-                        </FormControl>
-                         <div className="cursor-pointer" onClick={() => field.onChange("card-deck")}>
-                            <FormLabel className="font-medium cursor-pointer">Card Deck</FormLabel>
+                        <RadioGroupItem value="card-deck" id={`${field.name}-card-deck`} />
+                         <div className="cursor-pointer flex-1" onClick={() => field.onChange("card-deck")}>
+                            <Label htmlFor={`${field.name}-card-deck`} className="font-medium cursor-pointer">Card Deck</Label>
                             <p className="text-xs text-muted-foreground">A series of questions, requires a title.</p>
                         </div>
                       </FormItem>
                     </RadioGroup>
                   </FormControl>
                    <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md bg-muted/30 cursor-not-allowed flex-1 mt-2">
-                        <FormControl>
-                          <RadioGroupItem value="add-to-existing" disabled />
-                        </FormControl>
-                        <div className="opacity-50">
-                           <FormLabel className="font-medium text-muted-foreground cursor-not-allowed">Add to Existing Deck</FormLabel>
+                        <RadioGroupItem value="add-to-existing" disabled id={`${field.name}-add-to-existing`} />
+                        <div className="opacity-50 flex-1">
+                           <Label htmlFor={`${field.name}-add-to-existing`} className="font-medium text-muted-foreground cursor-not-allowed">Add to Existing Deck</Label>
                            <p className="text-xs text-muted-foreground cursor-not-allowed">Coming soon.</p>
                         </div>
                     </FormItem>
@@ -248,7 +231,7 @@ export default function CreateSurveyStep1Page() {
                     <FormLabel className="text-lg">4. Privacy Settings (for Card Deck)</FormLabel>
                     <Select 
                         onValueChange={field.onChange} 
-                        value={field.value || "public"} // Ensure value is controlled
+                        value={field.value || "public"}
                     >
                       <FormControl>
                         <SelectTrigger>
