@@ -1,3 +1,4 @@
+
 // @/app/survey/create/questions/page.tsx
 "use client";
 
@@ -10,13 +11,13 @@ import { useSurveyCreation, type SurveyQuestionContext } from "@/context/SurveyC
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { ArrowLeft, ArrowRight, PlusCircle, Trash2, XCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, PlusCircle, XCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 export default function CreateSurveyQuestionsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { surveyData, setCurrentStep, addQuestion, updateQuestion, removeQuestion, setSurveyData } = useSurveyCreation();
+  const { surveyData, setCurrentStep, updateQuestion, setSurveyData } = useSurveyCreation();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -25,19 +26,18 @@ export default function CreateSurveyQuestionsPage() {
       return;
     }
     // Ensure surveyData is correctly initialized for single-card if not already
-    // This mainly ensures that if context somehow had a different type, it's reset here.
     if (surveyData.surveyType !== "single-card" || surveyData.questions.length === 0) {
       setSurveyData(prev => ({
         ...prev,
         surveyType: "single-card",
         title: "",
-        description: prev.description || "", // Keep description if it was set
+        description: prev.description || "", 
         privacy: "Public",
-        questions: prev.questions.length > 0 ? [prev.questions[0]] : [{ // Ensure only one question
+        questions: prev.questions.length > 0 && prev.questions[0].type === "multiple-choice" ? [prev.questions[0]] : [{
           id: `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
           text: "",
           type: "multiple-choice",
-          options: [""]
+          options: ["", ""] // Default to two empty options
         }]
       }));
     }
@@ -115,9 +115,6 @@ export default function CreateSurveyQuestionsPage() {
     return <div className="text-center py-10">{authLoading ? "Loading question editor..." : "Redirecting to login..."}</div>;
   }
   
-  // Since surveyType is now fixed to 'single-card' and description is handled by context,
-  // no need to check surveyData.surveyType for loading message here as much.
-  // The useEffect handles initial setup.
   if (surveyData.questions.length === 0) {
      return <div className="text-center py-10">Initializing question editor...</div>;
   }
@@ -140,7 +137,6 @@ export default function CreateSurveyQuestionsPage() {
               <Label htmlFor={`qtext-${qIndex}`} className="text-lg font-semibold text-primary">
                 Your Question
               </Label>
-              {/* Remove question button is not needed for single card mode */}
             </div>
             <Textarea
               id={`qtext-${qIndex}`}
@@ -167,10 +163,9 @@ export default function CreateSurveyQuestionsPage() {
                     size="icon" 
                     onClick={() => handleRemoveOption(qIndex, optIndex)}
                     disabled={question.options.length <= 1}
-                    className="text-muted-foreground hover:text-destructive"
                     aria-label="Remove option"
                   >
-                    <XCircle className="h-5 w-5" />
+                    <XCircle className="h-5 w-5 text-destructive" />
                   </Button>
                 </div>
               ))}
@@ -181,20 +176,20 @@ export default function CreateSurveyQuestionsPage() {
                 disabled={question.options.length >= 5}
                 className="mt-2 w-full" 
               >
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Option
+                <PlusCircle className="mr-2 h-4 w-4 text-accent" /> Add Option
               </Button>
             </div>
           </Card>
-        {/* "Add Another Question" button is not needed for single card mode */}
       </CardContent>
       <CardFooter className="flex justify-between mt-8 pt-6 border-t">
           <Button variant="outline" onClick={handleBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+            <ArrowLeft className="mr-2 h-4 w-4 md:mr-2" /> <span className="hidden md:inline">Dashboard</span><span className="md:hidden">Back</span>
           </Button>
           <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            Next: Preview Card <ArrowRight className="mr-2 h-4 w-4" />
+            <span className="hidden md:inline">Preview</span><span className="md:hidden">Next</span> <ArrowRight className="ml-2 h-4 w-4 md:ml-2" />
           </Button>
       </CardFooter>
     </Card>
   );
 }
+
