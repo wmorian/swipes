@@ -89,28 +89,29 @@ export default function Header() {
           const isActive = item.href === "/survey/create/questions" ? pathname.startsWith(item.href) : pathname === item.href;
           return (
             <Link key={item.href} href={item.href} passHref className="flex-1 flex justify-center">
-              <Button 
-                variant="ghost" 
-                size="lg" // Use a larger size for better tap target
-                className={`flex flex-col items-center justify-center h-full w-full p-1 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} 
+              <Button
+                variant="ghost"
+                size="lg"
+                // Rely on Button's internal flex to center the icon.
+                // w-full and h-full ensure the button fills the Link container.
+                // The active state color is applied directly.
+                className={`w-full h-full ${isActive ? 'text-primary' : 'text-muted-foreground'}`}
                 aria-label={item.label}
               >
-                <IconComponent size={26} /> {/* Increased icon size */}
-                {/* Text label removed */}
+                <IconComponent size={26} />
               </Button>
             </Link>
           );
         })}
         {!user && (
            <Link href={mobileLoginNavItem.href} passHref className="flex-1 flex justify-center">
-             <Button 
-                variant="ghost" 
-                size="lg" // Use a larger size for better tap target
-                className={`flex flex-col items-center justify-center h-full w-full p-1 ${pathname === mobileLoginNavItem.href ? 'text-primary' : 'text-muted-foreground'}`} 
+             <Button
+                variant="ghost"
+                size="lg"
+                className={`w-full h-full ${pathname === mobileLoginNavItem.href ? 'text-primary' : 'text-muted-foreground'}`}
                 aria-label={mobileLoginNavItem.label}
               >
-               <mobileLoginNavItem.icon size={26} /> {/* Increased icon size */}
-               {/* Text label removed */}
+               <mobileLoginNavItem.icon size={26} />
              </Button>
            </Link>
         )}
