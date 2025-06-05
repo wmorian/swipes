@@ -1,8 +1,8 @@
+
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
-// import { getFirestore } from 'firebase/firestore'; // Uncomment if you need Firestore
-// import { getStorage } from 'firebase/storage'; // Uncomment if you need Storage
+import { getFirestore, serverTimestamp, increment, type Timestamp, type FieldValue } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBj6Z1SRCU5U_t45ya0aMHZsaUA0IdXz5s",
@@ -23,7 +23,7 @@ if (!getApps().length) {
 }
 
 const auth: Auth = getAuth(app);
-// const db = getFirestore(app); // Uncomment if you need Firestore
-// const storage = getStorage(app); // Uncomment if you need Storage
+const db = getFirestore(app); // Initialize Firestore
 
-export { app, auth /*, db, storage */ };
+export { app, auth, db, serverTimestamp, increment };
+export type { Timestamp, FieldValue };

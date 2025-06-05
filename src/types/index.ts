@@ -1,5 +1,6 @@
 
 // @/types/index.ts
+import type { Timestamp } from 'firebase/firestore';
 
 export interface User {
   id: string;
@@ -16,7 +17,7 @@ export interface Question {
 }
 
 export interface Survey {
-  id: string;
+  id: string; // Firestore document ID
   title: string; // Optional for single-card, but kept for structure; will be empty.
   description?: string;
   surveyType?: "single-card" | "card-deck"; // Type of survey
@@ -26,7 +27,8 @@ export interface Survey {
   status: "Draft" | "Active" | "Closed";
   privacy: "Public" | "Invite-Only"; // Relevant for card-deck, single-card is implicitly public
   createdBy?: string; // User ID of the creator
-  createdAt?: string; // ISO Date string
+  createdAt?: Timestamp | Date; // Firestore Timestamp or Date for local construction
+  updatedAt?: Timestamp | Date; // Firestore Timestamp or Date for local construction
   optionCounts?: Record<string, number>; // For multiple-choice stats: { "Option1": 10, "Option2": 5 }
   skipCount?: number; // How many times this card was skipped
 }
@@ -36,4 +38,3 @@ export interface Answer {
   value: any; // Can be string for text/multiple-choice, number for rating
   userId?: string; // Optional: if tracking who answered
 }
-

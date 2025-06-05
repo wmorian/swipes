@@ -6,11 +6,9 @@ import type { Survey, Question } from '@/types';
 import React, { createContext, useContext, useState, ReactNode, Dispatch, SetStateAction, useCallback } from 'react';
 import * as z from "zod";
 
-// Re-define schema parts here or import if sharable and stable
-// For simplicity, re-defining relevant parts for context value
 const questionSchema = z.object({
-  id: z.string().default(() => `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`), // Add an ID
-  text: z.string().min(1, "Question text cannot be empty."), // Min 1 for placeholder, actual validation on submit
+  id: z.string().default(() => `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`), 
+  text: z.string().min(1, "Question text cannot be empty."), 
   type: z.literal("multiple-choice"),
   options: z.array(z.string().min(1, "Option text cannot be empty."))
     .min(1, "At least one option is required.")
@@ -20,7 +18,7 @@ export type SurveyQuestionContext = z.infer<typeof questionSchema>;
 
 
 export const surveyCreationStep1Schema = z.object({
-  title: z.string().optional(), // Title is optional for single card
+  title: z.string().optional(), 
   description: z.string().optional(),
   surveyType: z.enum(["single-card", "card-deck", "add-to-existing"], {
     required_error: "Please select a survey type.",
@@ -28,7 +26,7 @@ export const surveyCreationStep1Schema = z.object({
   privacy: z.enum(["public", "invite-only"]).optional(),
 }).superRefine((data, ctx) => {
   if (data.surveyType === "card-deck") {
-    if (!data.title || data.title.length < 3) { // Reduced min length for title for flexibility
+    if (!data.title || data.title.length < 3) { 
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Survey title must be at least 3 characters for Card Decks.",
@@ -50,7 +48,7 @@ export type SurveyCreationData = {
   title?: string;
   description?: string;
   privacy?: "public" | "invite-only";
-  questions: Array<SurveyQuestionContext>; // Use the more detailed type
+  questions: Array<SurveyQuestionContext>; 
 };
 
 interface SurveyCreationContextType {
@@ -59,7 +57,7 @@ interface SurveyCreationContextType {
   currentStep: number;
   setCurrentStep: Dispatch<SetStateAction<number>>;
   updateStep1Data: (data: Partial<Pick<SurveyCreationData, 'surveyType' | 'title' | 'description' | 'privacy'>>) => void;
-  addQuestion: () => void; // Simplified: adds a default question
+  addQuestion: () => void; 
   updateQuestion: (index: number, question: SurveyQuestionContext) => void;
   removeQuestion: (index: number) => void;
   resetSurveyCreation: () => void;
@@ -69,14 +67,14 @@ const getDefaultQuestion = (): SurveyQuestionContext => ({
   id: `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
   text: "", 
   type: "multiple-choice", 
-  options: [""] 
+  options: [""] // Start with one empty option string
 });
 
 const defaultSurveyData: SurveyCreationData = {
-  surveyType: undefined,
+  surveyType: "single-card", // Default to single-card
   title: "",
   description: "",
-  privacy: "public",
+  privacy: "public", // Will be overridden to undefined for single-card in effects
   questions: [getDefaultQuestion()],
 };
 
@@ -102,7 +100,7 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
       } else if (newSurveyType !== 'single-card' && newQuestions.length === 0) {
         newQuestions = [getDefaultQuestion()];
       }
-
+      
       return {
         ...prev,
         ...data, 
@@ -111,7 +109,7 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
         privacy: newSurveyType === 'single-card' ? undefined : (data.privacy !== undefined ? data.privacy : prev.privacy),
       };
     });
-  }, [setSurveyData]);
+  }, []);
 
   const addQuestion = useCallback(() => {
     setSurveyData(prev => {
@@ -124,14 +122,14 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
             questions: [...prev.questions, getDefaultQuestion()],
         };
     });
-  }, [setSurveyData]);
+  }, []);
 
   const updateQuestion = useCallback((index: number, question: SurveyQuestionContext) => {
     setSurveyData(prev => ({
       ...prev,
       questions: prev.questions.map((q, i) => (i === index ? question : q)),
     }));
-  }, [setSurveyData]);
+  }, []);
 
   const removeQuestion = useCallback((index: number) => {
     setSurveyData(prev => {
@@ -148,12 +146,18 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
             questions: prev.questions.filter((_, i) => i !== index),
         };
     });
-  }, [setSurveyData]);
+  }, []);
   
   const resetSurveyCreation = useCallback(() => {
-    setSurveyData(defaultSurveyData);
+    setSurveyData({
+        surveyType: "single-card",
+        title: "",
+        description: "",
+        privacy: undefined,
+        questions: [getDefaultQuestion()],
+    });
     setCurrentStep(1);
-  }, [setSurveyData, setCurrentStep]);
+  }, []);
 
   return (
     <SurveyCreationContext.Provider value={{ 

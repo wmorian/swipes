@@ -9,59 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw, BarChartHorizontalBig } from 'lucide-react';
-
-// Enhanced Mock data for public single-card surveys with stats fields
-const initialMockPublicCardsData: Survey[] = [
-  {
-    id: 'pub-card-101',
-    title: '', 
-    description: 'Quick poll: Morning person or night owl?',
-    surveyType: 'single-card',
-    questions: [
-      { id: 'q-pc101', text: 'Are you more of a morning person or a night owl?', type: 'multiple-choice', options: ['Morning Person', 'Night Owl', 'Both equally', 'Neither'] }
-    ],
-    questionCount: 1,
-    responses: 0, 
-    status: 'Active',
-    privacy: 'Public',
-    createdBy: 'system-user',
-    optionCounts: {'Morning Person': 0, 'Night Owl': 0, 'Both equally': 0, 'Neither': 0},
-    skipCount: 0,
-  },
-  {
-    id: 'pub-card-102',
-    title: '',
-    description: 'Let\'s talk about coffee!',
-    surveyType: 'single-card',
-    questions: [
-      { id: 'q-pc102', text: 'How do you take your coffee?', type: 'multiple-choice', options: ['Black', 'With milk/cream', 'With sugar', 'With milk & sugar', 'I prefer tea'] }
-    ],
-    questionCount: 1,
-    responses: 0,
-    status: 'Active',
-    privacy: 'Public',
-    createdBy: 'system-user',
-    optionCounts: {'Black': 0, 'With milk/cream': 0, 'With sugar': 0, 'With milk & sugar': 0, 'I prefer tea': 0},
-    skipCount: 0,
-  },
-  {
-    id: 'pub-card-103',
-    title: '',
-    description: 'A question about your favorite way to unwind.',
-    surveyType: 'single-card',
-    questions: [
-      { id: 'q-pc103', text: 'Favorite way to unwind after a long day?', type: 'multiple-choice', options: ['Reading a book', 'Watching TV/Movies', 'Exercising', 'Listening to music', 'Spending time with loved ones'] }
-    ],
-    questionCount: 1,
-    responses: 0,
-    status: 'Active',
-    privacy: 'Public',
-    createdBy: 'system-user',
-    optionCounts: {'Reading a book': 0, 'Watching TV/Movies': 0, 'Exercising': 0, 'Listening to music': 0, 'Spending time with loved ones': 0},
-    skipCount: 0,
-  },
-];
+import { ArrowRight, RefreshCw } from 'lucide-react';
+import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
+import { collection, getDocs, query, where, orderBy, doc, updateDoc } from 'firebase/firestore';
 
 export default function HomePage() {
   const { user } = useAuth(); 
@@ -72,28 +22,45 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [statsForCard, setStatsForCard] = useState<Survey | null>(null);
 
-  useEffect(() => {
-    // Simulate fetching data and initializing optionCounts if not present
-    const initializedData = initialMockPublicCardsData.map(card => {
-      const options = card.questions?.[0]?.options || [];
-      const initialCounts = options.reduce((acc, option) => {
-        acc[option] = card.optionCounts?.[option] || 0;
-        return acc;
-      }, {} as Record<string, number>);
-      return {
-        ...card,
-        optionCounts: initialCounts,
-        skipCount: card.skipCount || 0,
-        responses: card.responses || 0,
-      };
-    });
-    setTimeout(() => {
-      setPublicCards(initializedData);
-      setIsLoading(false);
-      if (initializedData.length === 0) {
+  const fetchPublicCards = async () => {
+    setIsLoading(true);
+    setAllCardsViewed(false);
+    setCurrentCardIndex(0);
+    setStatsForCard(null);
+    setAnswers({});
+    try {
+      const surveysCol = collection(db, "surveys");
+      const q = query(surveysCol, 
+        where("privacy", "==", "Public"), 
+        where("surveyType", "==", "single-card"),
+        where("status", "==", "Active"),
+        orderBy("createdAt", "desc") // Show newest first
+      );
+      const surveySnapshot = await getDocs(q);
+      const fetchedSurveys = surveySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          ...data,
+          createdAt: (data.createdAt as Timestamp)?.toDate(),
+          updatedAt: (data.updatedAt as Timestamp)?.toDate(),
+        } as Survey;
+      });
+      setPublicCards(fetchedSurveys);
+      if (fetchedSurveys.length === 0) {
         setAllCardsViewed(true);
       }
-    }, 500);
+    } catch (error) {
+      console.error("Error fetching public cards:", error);
+      setPublicCards([]);
+      setAllCardsViewed(true); // Assume no cards if error
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPublicCards();
   }, []);
 
   const handleAnswer = (answer: any) => {
@@ -103,8 +70,8 @@ export default function HomePage() {
     }
   };
 
-  const handleCardInteractionCompletion = () => {
-    if (publicCards.length === 0) return;
+  const handleCardInteractionCompletion = async () => {
+    if (publicCards.length === 0 || !publicCards[currentCardIndex]) return;
 
     const currentSurvey = publicCards[currentCardIndex];
     const currentQuestion = currentSurvey.questions?.[0];
@@ -112,26 +79,38 @@ export default function HomePage() {
 
     if (currentQuestion) {
       const answerForCurrentCard = answers[currentQuestion.id];
-      
-      setPublicCards(prevCards => prevCards.map((card, index) => {
-        if (index === currentCardIndex) {
-          interactionRecorded = true;
-          const updatedCard = { ...card };
-          updatedCard.optionCounts = { ...(updatedCard.optionCounts || {}) };
+      const surveyRef = doc(db, "surveys", currentSurvey.id);
+      const updates: Record<string, any> = { updatedAt: serverTimestamp() };
+      let updatedCardForStatsDisplay = { ...currentSurvey, optionCounts: { ...(currentSurvey.optionCounts || {}) } };
 
-          if (answerForCurrentCard !== undefined && updatedCard.optionCounts.hasOwnProperty(answerForCurrentCard)) {
-            updatedCard.responses = (updatedCard.responses || 0) + 1;
-            updatedCard.optionCounts[answerForCurrentCard] = (updatedCard.optionCounts[answerForCurrentCard] || 0) + 1;
-            console.log(`Answer for card ${updatedCard.id}: ${answerForCurrentCard}`);
-          } else {
-            updatedCard.skipCount = (updatedCard.skipCount || 0) + 1;
-            console.log(`Card ${updatedCard.id} skipped.`);
-          }
-          setStatsForCard(updatedCard); // Show stats for the updated card
-          return updatedCard;
-        }
-        return card;
-      }));
+      if (answerForCurrentCard !== undefined && updatedCardForStatsDisplay.optionCounts && updatedCardForStatsDisplay.optionCounts.hasOwnProperty(answerForCurrentCard)) {
+        updates.responses = increment(1);
+        updates[`optionCounts.${answerForCurrentCard}`] = increment(1);
+        
+        updatedCardForStatsDisplay.responses = (updatedCardForStatsDisplay.responses || 0) + 1;
+        updatedCardForStatsDisplay.optionCounts[answerForCurrentCard] = (updatedCardForStatsDisplay.optionCounts[answerForCurrentCard] || 0) + 1;
+        interactionRecorded = true;
+      } else {
+        updates.skipCount = increment(1);
+        updatedCardForStatsDisplay.skipCount = (updatedCardForStatsDisplay.skipCount || 0) + 1;
+        interactionRecorded = true; // Skip is an interaction
+      }
+      
+      try {
+        await updateDoc(surveyRef, updates);
+        console.log(`Stats updated for card ${currentSurvey.id} in Firestore.`);
+        
+        // Update local publicCards array for optimistic UI update for *this specific card*
+        setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedCardForStatsDisplay : card));
+        setStatsForCard(updatedCardForStatsDisplay);
+
+      } catch (error) {
+        console.error("Error updating card stats in Firestore:", error);
+        // If Firestore update fails, show stats based on local optimistic update anyway for UX,
+        // or revert optimistic update and show an error. For now, show optimistic.
+        setStatsForCard(updatedCardForStatsDisplay);
+      }
+
 
       // Clear answer for the current question
       setAnswers(prevAns => {
@@ -139,13 +118,9 @@ export default function HomePage() {
         delete newAns[currentQuestion.id];
         return newAns;
       });
-
-      if (!interactionRecorded) { // Should not happen if logic is correct
-         setStatsForCard(currentSurvey); 
-      }
     } else {
-        // If no question, just move to next, this is an error state for a card
-        proceedToNextCard();
+      // If no question (error state for a card), just move to next
+      proceedToNextCard();
     }
   };
 
@@ -159,11 +134,8 @@ export default function HomePage() {
   };
   
   const resetCardView = () => {
-    setCurrentCardIndex(0);
-    setAllCardsViewed(false);
-    setStatsForCard(null);
-    // Optionally re-initialize mock data if we want stats to reset too, or fetch fresh.
-    // For now, stats persist on the mock data.
+    // Re-fetch cards to get latest data, including any new cards or updated stats from others
+    fetchPublicCards(); 
   };
 
   if (isLoading) {
@@ -215,16 +187,16 @@ export default function HomePage() {
         <Card className="p-6 md:p-10 shadow-xl w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-2xl font-headline text-primary">
-              {publicCards.length === 0 ? "No Public Cards Yet!" : "You've Seen All Cards!"}
+              {publicCards.length === 0 && !isLoading ? "No Public Cards Yet!" : "You've Seen All Cards!"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <CardDescription className="text-md mb-6">
-              {publicCards.length === 0 ? "Check back later for engaging public survey cards." : "Thanks for participating! Check back later for new cards."}
+              {publicCards.length === 0 && !isLoading ? "Check back later for engaging public survey cards, or create your own." : "Thanks for participating! Check back later for new cards."}
             </CardDescription>
-            {publicCards.length > 0 && (
+            {publicCards.length > 0 && ( // Only show if there were cards to view
                  <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
-                    <RefreshCw className="mr-2 h-4 w-4" /> View Again
+                    <RefreshCw className="mr-2 h-4 w-4" /> View Cards Again
                 </Button>
             )}
             <Button size="lg" asChild className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
@@ -239,15 +211,16 @@ export default function HomePage() {
   }
 
   const currentSurvey = publicCards[currentCardIndex];
-  const currentQuestion = currentSurvey.questions?.[0];
+  const currentQuestion = currentSurvey?.questions?.[0]; // Add optional chaining for safety
 
-  if (!currentQuestion) {
-    return <div className="text-center py-10 text-destructive">Error: Current card has no question.</div>;
+  if (!currentSurvey || !currentQuestion) { // Check if currentSurvey itself is defined
+    // This can happen briefly if cards are being re-fetched or if there's an issue
+    return <div className="text-center py-10 text-muted-foreground">Loading card data or no question available...</div>;
   }
 
   return (
     <div className="flex flex-col items-center justify-center flex-grow py-6 md:py-10 px-4">
-      <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6"> {/* Phone-sized container */}
+      <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6">
         {currentSurvey.description && (
           <div className="text-center">
             <p className="text-md font-medium text-primary">{currentSurvey.description}</p>
@@ -259,8 +232,8 @@ export default function HomePage() {
           questionNumber={1}
           totalQuestions={1}
           onAnswer={handleAnswer}
-          onNext={handleCardInteractionCompletion} // Changed to new handler
-          onPrevious={() => {}} // No previous for public feed
+          onNext={handleCardInteractionCompletion} 
+          onPrevious={() => {}} 
           isFirstQuestion={true}
           isLastQuestion={true}
         />
