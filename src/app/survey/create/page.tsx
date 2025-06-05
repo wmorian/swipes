@@ -72,7 +72,7 @@ export default function CreateSurveyStep1Page() {
     surveyData.description, 
     surveyData.surveyType, 
     surveyData.privacy, 
-    form // form.reset is stable from RHF, so form can be a dependency
+    form 
   ]);
 
   useEffect(() => {
@@ -134,7 +134,6 @@ export default function CreateSurveyStep1Page() {
   }
 
   if (!user) {
-    // This check is technically redundant due to useEffect, but good for clarity
     return <div className="text-center py-10">Redirecting to login...</div>;
   }
 
@@ -159,7 +158,7 @@ export default function CreateSurveyStep1Page() {
                         field.onChange(value);
                       }}
                       value={field.value || "card-deck"} 
-                      className="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-4"
+                      className="flex flex-col space-y-2" // Adjusted for consistent stacking of options
                     >
                       <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors flex-1">
                         <RadioGroupItem value="single-card" id={`${field.name}-single-card`} />
@@ -175,15 +174,16 @@ export default function CreateSurveyStep1Page() {
                             <p className="text-xs text-muted-foreground">A series of questions, requires a title.</p>
                         </div>
                       </FormItem>
-                    </RadioGroup>
-                  </FormControl>
-                   <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md bg-muted/30 cursor-not-allowed flex-1 mt-2">
+                      {/* Moved the "add-to-existing" FormItem inside the RadioGroup */}
+                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md bg-muted/30 cursor-not-allowed flex-1 mt-2">
                         <RadioGroupItem value="add-to-existing" disabled id={`${field.name}-add-to-existing`} />
                         <div className="opacity-50 flex-1">
                            <Label htmlFor={`${field.name}-add-to-existing`} className="font-medium text-muted-foreground cursor-not-allowed">Add to Existing Deck</Label>
                            <p className="text-xs text-muted-foreground cursor-not-allowed">Coming soon.</p>
                         </div>
-                    </FormItem>
+                      </FormItem>
+                    </RadioGroup>
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -266,3 +266,5 @@ export default function CreateSurveyStep1Page() {
     </Card>
   );
 }
+
+    
