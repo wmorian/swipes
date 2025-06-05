@@ -18,11 +18,12 @@ export interface Survey {
   id: string;
   title: string;
   description?: string;
+  surveyType?: "single-card" | "card-deck"; // Type of survey
   questions?: Question[];
   questionCount: number;
   responses: number;
   status: "Draft" | "Active" | "Closed";
-  privacy: "Public" | "Invite-Only";
+  privacy: "Public" | "Invite-Only"; // Relevant for card-deck, single-card is implicitly public
   createdBy?: string; // User ID
   createdAt?: string; // ISO Date string
 }
