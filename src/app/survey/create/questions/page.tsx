@@ -130,7 +130,7 @@ export default function CreateSurveyQuestionsPage() {
       </CardHeader>
       <CardContent className="space-y-8">
         {surveyData.questions.map((question, qIndex) => (
-          <Card key={question.id || qIndex} className="p-4 space-y-4 shadow-md">
+          <Card key={question.id || qIndex} className="p-4 space-y-4 shadow-md w-full max-w-xs sm:max-w-sm mx-auto">
             <div className="flex justify-between items-center">
               <Label htmlFor={`qtext-${qIndex}`} className="text-lg font-semibold text-primary">
                 Question {qIndex + 1}
@@ -184,18 +184,18 @@ export default function CreateSurveyQuestionsPage() {
                 size="sm"
                 onClick={() => handleAddOption(qIndex)}
                 disabled={question.options.length >= 5}
-                className="mt-2"
+                className="mt-2 w-full" 
               >
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Option
               </Button>
             </div>
 
             <div className="mt-6">
-              <Label className="text-md font-medium block mb-2 text-center text-muted-foreground">Live Preview (Mobile)</Label>
-              <div className="w-full max-w-xs mx-auto bg-muted p-3 rounded-lg shadow-inner">
+              <Label className="text-md font-medium block mb-2 text-center text-muted-foreground">Live Preview</Label>
+              <div className="w-full bg-muted p-3 rounded-lg shadow-inner">
                  <SurveyCard
                     question={mapContextQuestionToSurveyCardQuestion(question)}
-                    questionNumber={1} // Preview is always for a single card context
+                    questionNumber={1} 
                     totalQuestions={1}
                     onAnswer={() => {}} 
                     onNext={() => {}} 
@@ -209,9 +209,11 @@ export default function CreateSurveyQuestionsPage() {
         ))}
 
         {surveyData.surveyType === "card-deck" && (
-          <Button onClick={addQuestion} variant="secondary" className="w-full sm:w-auto">
-            <PlusCircle className="mr-2 h-5 w-5" /> Add Another Question
-          </Button>
+          <div className="flex justify-center">
+            <Button onClick={addQuestion} variant="secondary" className="w-full max-w-xs sm:max-w-sm">
+              <PlusCircle className="mr-2 h-5 w-5" /> Add Another Question
+            </Button>
+          </div>
         )}
       </CardContent>
       <CardFooter className="flex justify-between mt-8 pt-6 border-t">
