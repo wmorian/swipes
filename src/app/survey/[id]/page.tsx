@@ -6,8 +6,9 @@ import { useParams, useRouter } from 'next/navigation';
 import SurveyCard from '@/components/survey/SurveyCard';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Survey, Question } from '@/types'; // Assuming type definitions
+import type { Survey } from '@/types'; 
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
 
 // Mock survey data - replace with actual data fetching
 const mockSurveyData: Survey = {
@@ -26,6 +27,7 @@ const mockSurveyData: Survey = {
 
 
 export default function TakeSurveyPage() {
+  const { user, loading: authLoading } = useAuth();
   const params = useParams();
   const router = useRouter();
   const surveyId = params.id as string;
@@ -34,11 +36,26 @@ export default function TakeSurveyPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const [surveyCompleted, setSurveyCompleted] = useState(false);
+  const [surveyLoading, setSurveyLoading] = useState(true);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      // Allowing non-logged in users to take public surveys for now.
+      // If all surveys must be protected, uncomment:
+      // router.push('/login?redirect=/survey/' + surveyId); 
+    }
+  }, [user, authLoading, router, surveyId]);
 
   useEffect(() => {
     // In a real app, fetch survey data by surveyId
     if (surveyId) {
-      setSurvey(mockSurveyData); // Using mock data
+      // Simulate fetching survey data
+      setTimeout(() => {
+        setSurvey(mockSurveyData); 
+        setSurveyLoading(false);
+      }, 500);
+    } else {
+      setSurveyLoading(false);
     }
   }, [surveyId]);
 
@@ -53,10 +70,10 @@ export default function TakeSurveyPage() {
     if (survey && survey.questions && currentQuestionIndex < survey.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
-      // Survey finished
       console.log("Final Answers:", answers);
       setSurveyCompleted(true);
       // In a real app, submit answers to backend here
+      // If user is logged in, associate answers with user.id
     }
   };
 
@@ -65,9 +82,25 @@ export default function TakeSurveyPage() {
       setCurrentQuestionIndex(prev => prev - 1);
     }
   };
+  
+  if (authLoading || surveyLoading) {
+    return <div className="text-center py-10">Loading survey...</div>;
+  }
+
+  // Example: If a survey is 'Invite-Only' and user is not logged in or not invited, show message.
+  // This logic would need actual data and potentially more context.
+  // For now, we assume public surveys are accessible.
+  // if (survey?.privacy === 'Invite-Only' && !user) {
+  //   return (
+  //     <div className="text-center py-10">
+  //       This survey is invite-only. Please <Link href={`/login?redirect=/survey/${surveyId}`}>login</Link> to participate if you have been invited.
+  //     </div>
+  //   );
+  // }
+
 
   if (!survey || !survey.questions) {
-    return <div className="text-center py-10">Loading survey...</div>;
+    return <div className="text-center py-10">Survey not found or failed to load.</div>;
   }
 
   if (surveyCompleted) {
@@ -80,8 +113,8 @@ export default function TakeSurveyPage() {
           </CardHeader>
           <CardContent>
             <p className="mb-6">We appreciate your feedback on the "{survey.title}" survey.</p>
-            <Button onClick={() => router.push('/dashboard')} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-              Back to Dashboard
+            <Button onClick={() => router.push(user ? '/dashboard' : '/')} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+              {user ? 'Back to Dashboard' : 'Back to Home'}
             </Button>
           </CardContent>
         </Card>

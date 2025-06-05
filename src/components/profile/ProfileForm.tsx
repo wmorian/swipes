@@ -21,6 +21,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
 import { Camera } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
 
 
 const profileFormSchema = z.object({
@@ -29,15 +30,15 @@ const profileFormSchema = z.object({
   }),
   email: z.string().email(),
   avatarUrl: z.string().url().optional().or(z.literal('')),
-  // Add fields for password change if needed, typically handled separately
 });
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
 export default function ProfileForm() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, loading: authLoading } = useAuth();
+  const router = useRouter();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [formProcessing, setFormProcessing] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -49,21 +50,23 @@ export default function ProfileForm() {
   });
   
   useEffect(() => {
-    if (user) {
+    if (!authLoading && !user) {
+      router.push('/login');
+    } else if (user) {
       form.reset({
         name: user.name || "",
         email: user.email,
         avatarUrl: user.avatarUrl || "",
       });
     }
-  }, [user, form]);
+  }, [user, authLoading, router, form]);
 
 
   async function onSubmit(data: ProfileFormValues) {
     if (!user) return;
-    setLoading(true);
+    setFormProcessing(true);
     try {
-      await updateUser({ ...user, ...data }); // Simulate update
+      await updateUser({ ...user, ...data });
       toast({
         title: "Profile Updated",
         description: "Your profile information has been successfully updated.",
@@ -75,12 +78,16 @@ export default function ProfileForm() {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setFormProcessing(false);
     }
   }
 
+  if (authLoading) {
+    return <div className="text-center py-10">Loading profile...</div>;
+  }
+
   if (!user) {
-    return <div>Loading profile...</div>;
+    return <div className="text-center py-10">Redirecting to login...</div>;
   }
   
   const userInitials = user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase() : user.email[0].toUpperCase();
@@ -145,9 +152,8 @@ export default function ProfileForm() {
                 </FormItem>
               )}
             />
-            {/* Password change section could be added here or as a separate component */}
-            <Button type="submit" className="w-full md:w-auto bg-primary hover:bg-primary/90" disabled={loading}>
-              {loading ? "Saving..." : "Save Changes"}
+            <Button type="submit" className="w-full md:w-auto bg-primary hover:bg-primary/90" disabled={formProcessing || authLoading}>
+              {formProcessing ? "Saving..." : "Save Changes"}
             </Button>
           </form>
         </Form>

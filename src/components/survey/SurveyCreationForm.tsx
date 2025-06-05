@@ -18,15 +18,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Trash2, GripVertical } from 'lucide-react';
+import { PlusCircle, Trash2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 
 const questionSchema = z.object({
   text: z.string().min(5, "Question text must be at least 5 characters."),
   type: z.enum(["multiple-choice", "text", "rating"], { required_error: "Question type is required." }),
-  options: z.array(z.string().min(1, "Option text cannot be empty.")).optional(), // For multiple-choice
+  options: z.array(z.string().min(1, "Option text cannot be empty.")).optional(),
 });
 
 const surveyCreationSchema = z.object({
@@ -39,9 +40,10 @@ const surveyCreationSchema = z.object({
 type SurveyCreationValues = z.infer<typeof surveyCreationSchema>;
 
 export default function SurveyCreationForm() {
-  const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+  const [formProcessing, setFormProcessing] = useState(false);
 
   const form = useForm<SurveyCreationValues>({
     resolver: zodResolver(surveyCreationSchema),
@@ -53,7 +55,13 @@ export default function SurveyCreationForm() {
     },
   });
 
-  const { fields, append, remove, move } = useFieldArray({
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "questions",
   });
@@ -70,16 +78,28 @@ export default function SurveyCreationForm() {
   }
 
   async function onSubmit(data: SurveyCreationValues) {
-    setLoading(true);
+    if (!user) {
+      toast({ title: "Authentication Error", description: "You must be logged in to create a survey.", variant: "destructive" });
+      return;
+    }
+    setFormProcessing(true);
     console.log("Survey data:", data);
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
-    setLoading(false);
+    setFormProcessing(false);
     toast({
       title: "Survey Created!",
       description: `Your survey "${data.title}" has been successfully created.`,
     });
-    router.push("/dashboard"); // Redirect to dashboard or survey page
+    router.push("/dashboard");
+  }
+
+  if (authLoading) {
+    return <div className="text-center py-10">Loading form...</div>;
+  }
+
+  if (!user) {
+    return <div className="text-center py-10">Redirecting to login...</div>;
   }
 
   return (
@@ -125,9 +145,6 @@ export default function SurveyCreationForm() {
                   <div className="flex items-center justify-between">
                      <FormLabel className="text-md">Question {index + 1}</FormLabel>
                      <div className="flex items-center gap-2">
-                        {/* <Button type="button" variant="ghost" size="icon" className="cursor-grab" title="Drag to reorder">
-                          <GripVertical className="h-5 w-5 text-muted-foreground" />
-                        </Button> */}
                         {fields.length > 1 && (
                           <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="text-destructive/80 hover:text-destructive">
                             <Trash2 className="h-5 w-5" />
@@ -138,10 +155,10 @@ export default function SurveyCreationForm() {
                   <FormField
                     control={form.control}
                     name={`questions.${index}.text`}
-                    render={({ field }) => (
+                    render={({ field: qField }) => (
                       <FormItem>
                         <FormControl>
-                          <Input placeholder="Enter your question text" {...field} />
+                          <Input placeholder="Enter your question text" {...qField} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -150,9 +167,9 @@ export default function SurveyCreationForm() {
                   <FormField
                     control={form.control}
                     name={`questions.${index}.type`}
-                    render={({ field }) => (
+                    render={({ field: qField }) => (
                       <FormItem>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={qField.onChange} defaultValue={qField.value}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select question type" />
@@ -232,8 +249,8 @@ export default function SurveyCreationForm() {
               )}
             />
 
-            <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={loading}>
-             {loading ? "Creating Survey..." : "Create Survey"}
+            <Button type="submit" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={formProcessing || authLoading}>
+             {formProcessing ? "Creating Survey..." : "Create Survey"}
             </Button>
           </form>
         </Form>

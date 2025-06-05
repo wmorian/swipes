@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { PlusCircle, ListChecks, BarChart2, Edit3, Share2, Trash2, Users, FileText } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import type { Survey } from '@/types'; // Assuming Survey type definition
+import type { Survey } from '@/types';
 
 // Mock data - replace with actual data fetching
 const mockSurveys: Survey[] = [
@@ -24,23 +24,27 @@ const mockActivity = [
 ];
 
 export default function DashboardClient() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [activity, setActivity] = useState<typeof mockActivity>([]);
 
   useEffect(() => {
-    if (!user) {
+    if (!authLoading && !user) {
       router.push('/login');
-    } else {
+    } else if (user) {
       // Fetch user-specific data here
       setSurveys(mockSurveys);
       setActivity(mockActivity);
     }
-  }, [user, router]);
+  }, [user, authLoading, router]);
+
+  if (authLoading) {
+    return <div className="text-center py-10">Loading...</div>;
+  }
 
   if (!user) {
-    return <div className="text-center py-10">Loading dashboard or redirecting...</div>;
+    return <div className="text-center py-10">Redirecting to login...</div>;
   }
   
   const formatRelativeTime = (dateString: string) => {

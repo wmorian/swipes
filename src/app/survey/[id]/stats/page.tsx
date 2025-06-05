@@ -2,16 +2,17 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import SurveyStatsDisplay from '@/components/survey/SurveyStatsDisplay';
-import type { Survey, Answer, Question } from '@/types';
+import type { Survey, Answer } from '@/types';
+import { useAuth } from '@/context/AuthContext';
 
 // Mock data
 const mockSurveyData: Survey = {
   id: '123',
   title: 'Sample Feedback Survey',
   questionCount: 3,
-  responses: 5, // Let's assume 5 responses
+  responses: 5, 
   status: 'Active',
   privacy: 'Public',
   questions: [
@@ -29,22 +30,46 @@ const mockAnswersData: Answer[] = [
 
 
 export default function SurveyStatsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const params = useParams();
   const surveyId = params.id as string;
 
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    // In a real app, fetch survey and answers data by surveyId
-    if (surveyId) {
-      setSurvey(mockSurveyData); 
-      setAnswers(mockAnswersData.filter(ans => mockSurveyData.questions?.some(q => q.id === ans.questionId)));
+    if (!authLoading && !user) {
+      router.push(`/login?redirect=/survey/${surveyId}/stats`);
     }
-  }, [surveyId]);
+  }, [user, authLoading, router, surveyId]);
+  
+  useEffect(() => {
+    if (user && surveyId) { // Only fetch data if user is logged in
+      // In a real app, fetch survey and answers data by surveyId
+      // Ensure only authorized users can see stats (e.g., survey owner)
+      setTimeout(() => { // Simulate API call
+        setSurvey(mockSurveyData); 
+        setAnswers(mockAnswersData.filter(ans => mockSurveyData.questions?.some(q => q.id === ans.questionId)));
+        setDataLoading(false);
+      }, 500);
+    } else if (!authLoading && !user) {
+      // If not logged in and auth is resolved, no need to load data
+      setDataLoading(false);
+    }
+  }, [surveyId, user, authLoading]);
+
+  if (authLoading || (user && dataLoading)) { // Show loading if auth is loading OR (user exists AND data is loading)
+    return <div className="text-center py-10">Loading survey statistics...</div>;
+  }
+
+  if (!user) {
+     return <div className="text-center py-10">Redirecting to login...</div>;
+  }
 
   if (!survey) {
-    return <div className="text-center py-10">Loading survey statistics...</div>;
+    return <div className="text-center py-10">Survey statistics not found or you do not have permission to view them.</div>;
   }
 
   return (
