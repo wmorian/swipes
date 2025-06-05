@@ -109,14 +109,13 @@ export default function HomePage() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading]); // Removed router from deps as it doesn't change
+  }, [user, authLoading]); 
 
-  // Core logic for processing interactions (both answers and explicit skips from non-answered cards)
   const processCardInteraction = async (
     currentSurvey: Survey, 
     currentQuestion: Question,
-    interactionType: 'answer' | 'skip', // 'skip' here means an explicit skip on a non-answered card
-    submittedAnswer?: any // undefined if interactionType is 'skip'
+    interactionType: 'answer' | 'skip', 
+    submittedAnswer?: any 
   ): Promise<{ updatedSurveyForStats: Survey; interactionProcessed: boolean }> => {
     if (!user) return { updatedSurveyForStats: currentSurvey, interactionProcessed: false };
 
@@ -126,26 +125,24 @@ export default function HomePage() {
     let actualSurveyStatChangesMade = false;
 
     const previousAnswerValue = existingUserInteraction?.answerValue;
-    const wasPreviouslySkipped = existingUserInteraction?.isSkipped ?? true; // Default to true if no interaction yet
+    const wasPreviouslySkipped = existingUserInteraction?.isSkipped ?? true; 
 
-    // Determine current state based on interaction
     const isCurrentlySkipped = interactionType === 'skip';
     const currentAnswerValue = isCurrentlySkipped ? undefined : submittedAnswer;
     
-    // Logic to determine changes to survey's global stats
-    if (!existingUserInteraction) { // First interaction
+    if (!existingUserInteraction) { 
       if (isCurrentlySkipped) {
         finalSurveyUpdates.skipCount = increment(1);
-      } else { // New answer
+      } else { 
         finalSurveyUpdates.responses = increment(1);
         if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
           finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
         }
       }
       actualSurveyStatChangesMade = true;
-    } else { // Existing interaction
-      if (wasPreviouslySkipped) { // Was skipped
-        if (!isCurrentlySkipped) { // Now answered
+    } else { 
+      if (wasPreviouslySkipped) { 
+        if (!isCurrentlySkipped) { 
           finalSurveyUpdates.skipCount = increment(-1);
           finalSurveyUpdates.responses = increment(1);
           if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
@@ -153,41 +150,35 @@ export default function HomePage() {
           }
           actualSurveyStatChangesMade = true;
         }
-        // If re-skipping a previously skipped card, no stat change needed.
-      } else { // Was answered
-        if (isCurrentlySkipped) { // Now skipping (this path shouldn't be hit if Req 4 is handled by handleCardSkip's early exit)
-          // This case implies user answered, then somehow triggered a 'skip' type interaction to undo.
-          // For safety, let's assume this means clearing their answer and marking as skip.
+      } else { 
+        if (isCurrentlySkipped) { 
           finalSurveyUpdates.responses = increment(-1);
           if (previousAnswerValue && typeof previousAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${previousAnswerValue}`] = increment(-1);
           }
           finalSurveyUpdates.skipCount = increment(1);
           actualSurveyStatChangesMade = true;
-        } else if (currentAnswerValue !== previousAnswerValue) { // Changed answer
+        } else if (currentAnswerValue !== previousAnswerValue) { 
           if (previousAnswerValue && typeof previousAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${previousAnswerValue}`] = increment(-1);
           }
           if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
           }
-          actualSurveyStatChangesMade = true; // responses count remains the same
+          actualSurveyStatChangesMade = true; 
         }
-        // If re-answering with the same answer, no stat change needed.
       }
     }
     
     let updatedSurveyForStats: Survey = currentSurvey;
 
     try {
-      // Update survey (global) stats if they changed
       if (actualSurveyStatChangesMade) { 
           await updateDoc(surveyRef, finalSurveyUpdates);
-      } else if (existingUserInteraction) { // If no stat changes but there was an interaction, still update timestamp
+      } else if (existingUserInteraction) { 
           await updateDoc(surveyRef, { updatedAt: serverTimestamp() });
       }
 
-      // Prepare data for userSurveyAnswers collection
       const interactionData: Omit<UserSurveyAnswer, 'id' | 'answeredAt'> & { answeredAt: any } = {
         userId: user.id,
         surveyId: currentSurvey.id,
@@ -199,7 +190,6 @@ export default function HomePage() {
 
       const newInteractionForLocalState = { ...interactionData, answeredAt: new Date() };
 
-      // Update or create user's specific interaction record
       if (existingUserInteraction?.docId) {
         await updateDoc(doc(db, "userSurveyAnswers", existingUserInteraction.docId), interactionData);
         setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: existingUserInteraction.docId }}));
@@ -208,7 +198,6 @@ export default function HomePage() {
         setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocRef.id }}));
       }
       
-      // Fetch fresh survey data for stats display if actual stats changed OR if it was an answer submission
       if (actualSurveyStatChangesMade || interactionType === 'answer') { 
         const updatedSurveyDoc = await getDoc(surveyRef);
         if (updatedSurveyDoc.exists()) {
@@ -218,7 +207,6 @@ export default function HomePage() {
               createdAt: (data.createdAt as Timestamp)?.toDate(),
               updatedAt: (data.updatedAt as Timestamp)?.toDate(),
             } as Survey;
-            // Update the card in the main publicCards list as well
             setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedSurveyForStats : card));
         }
       }
@@ -229,31 +217,25 @@ export default function HomePage() {
     }
   };
 
-  // Handles submission of an answer (Next/Finish button)
   const handleCardAnswerSubmission = async (submittedAnswer?: any) => {
     if (publicCards.length === 0 || !publicCards[currentCardIndex]) return;
     const currentSurvey = publicCards[currentCardIndex];
     const currentQuestion = currentSurvey.questions?.[0];
 
-    if (!currentQuestion) { // Should not happen if survey has questions
+    if (!currentQuestion) { 
       proceedToNextCard(); 
       return;
     }
-    // Requirement 5: Next button is only enabled if an answer is selected.
-    // So, submittedAnswer should always have a value here.
     if (submittedAnswer === undefined) {
         console.warn("handleCardAnswerSubmission called without an answer. This should not happen if 'Next' button is properly disabled.");
-        // Optionally, treat as a skip or do nothing and let user skip explicitly
-        // For now, proceed to next card to avoid getting stuck
         proceedToNextCard();
         return;
     }
 
     const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'answer', submittedAnswer);
-    setStatsForCard(updatedSurveyForStats); // Show stats after answering
+    setStatsForCard(updatedSurveyForStats); 
   };
 
-  // Handles explicit skip button click
   const handleCardSkip = async () => {
     if (publicCards.length === 0 || !publicCards[currentCardIndex]) return;
     const currentSurvey = publicCards[currentCardIndex];
@@ -266,16 +248,13 @@ export default function HomePage() {
 
     const existingUserInteraction = userCardInteractions[currentSurvey.id];
 
-    // Requirement 4: If a card is already answered and is skipped, keep the previous answer and just move on.
     if (existingUserInteraction && !existingUserInteraction.isSkipped) {
-      proceedToNextCard(); // Just move to next card, don't show stats, don't update Firestore for this skip.
+      proceedToNextCard(); 
       return;
     }
 
-    // Requirement 1: If a card is not answered (or previously skipped) and is skipped now, mark it as skipped.
-    // This will call processCardInteraction with 'skip' type.
     await processCardInteraction(currentSurvey, currentQuestion, 'skip');
-    proceedToNextCard(); // Directly proceed without showing stats for the skipped card.
+    proceedToNextCard(); 
   };
 
 
@@ -289,8 +268,6 @@ export default function HomePage() {
   };
   
   const resetCardView = () => {
-    // Re-fetch data to get latest versions and reset user interactions from scratch
-    // This also handles if new cards were added by others.
     fetchSurveyData(); 
   };
 
@@ -298,15 +275,14 @@ export default function HomePage() {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading...</p></div>;
   }
   if (!user && !authLoading) {
-    // Redirect handled by useEffect, this is a fallback display.
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
-  if (isLoading && user) { // Show loading if user is present but data is still fetching
+  if (isLoading && user) { 
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
   if (statsForCard) {
-    const cardToDisplayStats = statsForCard; // This should be the updated survey from processCardInteraction
+    const cardToDisplayStats = statsForCard; 
     const questionText = cardToDisplayStats.questions?.[0]?.text || "Survey Question";
     const totalResponses = cardToDisplayStats.responses || 0;
     const totalSkips = cardToDisplayStats.skipCount || 0;
@@ -344,7 +320,7 @@ export default function HomePage() {
     );
   }
 
-  if (allCardsViewed || publicCards.length === 0 && !isLoading) { // Added !isLoading here
+  if (allCardsViewed || publicCards.length === 0 && !isLoading) { 
     return (
       <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-10rem)] space-y-6 px-4">
         <Card className="p-6 md:p-10 shadow-xl w-full max-w-md">
@@ -357,13 +333,13 @@ export default function HomePage() {
             <CardDescription className="text-md mb-6">
               {publicCards.length === 0 && !isLoading ? "Check back later for engaging public survey cards, or create your own." : "Thanks for participating! Check back later for new cards."}
             </CardDescription>
-            {publicCards.length > 0 && ( // Only show "View Again" if there were cards
+            {publicCards.length > 0 && ( 
                  <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
                     <RefreshCw className="mr-2 h-4 w-4" /> View Cards Again
                 </Button>
             )}
             <Button size="lg" asChild className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
-              <Link href="/survey/create">
+              <Link href="/survey/create/questions">
                 Create Your Own Survey Card
               </Link>
             </Button>
@@ -379,8 +355,6 @@ export default function HomePage() {
 
 
   if (!currentSurvey || !currentQuestion) { 
-    // This can happen briefly if publicCards is populated but currentCardIndex is momentarily out of sync,
-    // or if a survey somehow has no questions.
     return <div className="text-center py-10 text-muted-foreground">Loading card data or no question available...</div>;
   }
 
@@ -402,13 +376,6 @@ export default function HomePage() {
           isLastQuestion={currentCardIndex === publicCards.length - 1}
           initialAnswer={currentUserInitialAnswer}
         />
-         <div className="pt-2 text-center">
-            <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
-              <Link href="/survey/create">
-                Create a Survey Card <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-        </div>
       </div>
     </div>
   );
