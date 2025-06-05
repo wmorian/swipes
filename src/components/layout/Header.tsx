@@ -92,13 +92,10 @@ export default function Header() {
               <Button
                 variant="ghost"
                 size="lg"
-                // Rely on Button's internal flex to center the icon.
-                // w-full and h-full ensure the button fills the Link container.
-                // The active state color is applied directly.
                 className={`w-full h-full ${isActive ? 'text-primary' : 'text-muted-foreground'}`}
                 aria-label={item.label}
               >
-                <IconComponent size={26} />
+                <IconComponent className="h-7 w-7" />
               </Button>
             </Link>
           );
@@ -111,7 +108,7 @@ export default function Header() {
                 className={`w-full h-full ${pathname === mobileLoginNavItem.href ? 'text-primary' : 'text-muted-foreground'}`}
                 aria-label={mobileLoginNavItem.label}
               >
-               <mobileLoginNavItem.icon size={26} />
+               <mobileLoginNavItem.icon className="h-7 w-7" />
              </Button>
            </Link>
         )}
