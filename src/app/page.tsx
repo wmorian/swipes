@@ -21,7 +21,6 @@ import {
   updateDoc, 
   getDoc,
   addDoc,
-  writeBatch,
   limit, 
   QueryConstraint
 } from 'firebase/firestore';
@@ -33,7 +32,7 @@ export default function HomePage() {
   const [publicCards, setPublicCards] = useState<Survey[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [allCardsViewed, setAllCardsViewed] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // For survey data loading
+  const [isLoading, setIsLoading] = useState(true); 
   const [statsForCard, setStatsForCard] = useState<Survey | null>(null);
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
 
@@ -55,7 +54,7 @@ export default function HomePage() {
         where("surveyType", "==", "single-card"),
         where("status", "==", "Active"),
         orderBy("createdAt", "desc"),
-        // limit(10) // Optionally limit the number of cards fetched
+        // limit(10) 
       ];
       const surveySnapshot = await getDocs(query(surveysCol, ...surveyQueryConstraints));
       const fetchedSurveys = surveySnapshot.docs.map(docSnap => {
@@ -112,15 +111,13 @@ export default function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, router]);
 
-  const handleCardInteractionCompletion = async (submittedAnswer?: any) => {
-    if (!user || publicCards.length === 0 || !publicCards[currentCardIndex]) return;
-
-    const currentSurvey = publicCards[currentCardIndex];
-    const currentQuestion = currentSurvey.questions?.[0];
-    if (!currentQuestion) {
-      proceedToNextCard(); 
-      return;
-    }
+  const processCardInteraction = async (
+    currentSurvey: Survey, 
+    currentQuestion: Question,
+    interactionType: 'answer' | 'skip', 
+    submittedAnswer?: any
+  ) => {
+    if (!user) return { updatedSurveyForStats: currentSurvey, interactionProcessed: false};
 
     const existingUserInteraction = userCardInteractions[currentSurvey.id];
     const surveyRef = doc(db, "surveys", currentSurvey.id);
@@ -128,10 +125,10 @@ export default function HomePage() {
     let actualSurveyStatChangesMade = false;
 
     const previousAnswerValue = existingUserInteraction?.answerValue;
-    const wasPreviouslySkipped = existingUserInteraction?.isSkipped ?? true; 
+    const wasPreviouslySkipped = existingUserInteraction?.isSkipped ?? true;
 
-    const currentAnswerValue = submittedAnswer; 
-    const isCurrentlySkipped = currentAnswerValue === undefined;
+    const isCurrentlySkipped = interactionType === 'skip' || submittedAnswer === undefined;
+    const currentAnswerValue = isCurrentlySkipped ? undefined : submittedAnswer;
 
     if (!existingUserInteraction) { 
         if (isCurrentlySkipped) {
@@ -173,12 +170,12 @@ export default function HomePage() {
         }
     }
     
+    let updatedSurveyForStats: Survey = currentSurvey;
+
     try {
       if (actualSurveyStatChangesMade || Object.keys(finalSurveyUpdates).length > 1) { 
           await updateDoc(surveyRef, finalSurveyUpdates);
-      } else if (!actualSurveyStatChangesMade && existingUserInteraction) { 
-          // If stats didn't change but there was an existing interaction (e.g. user re-confirmed answer or re-skipped), 
-          // we still want to update the userSurveyAnswer's timestamp, so proceed to that, but only touch survey's updatedAt.
+      } else if (existingUserInteraction) {
           await updateDoc(surveyRef, { updatedAt: serverTimestamp() });
       }
 
@@ -191,39 +188,61 @@ export default function HomePage() {
         answeredAt: serverTimestamp(),
       };
 
+      const newInteractionForLocalState = { ...interactionData, answeredAt: new Date() };
+
       if (existingUserInteraction?.docId) {
         await updateDoc(doc(db, "userSurveyAnswers", existingUserInteraction.docId), interactionData);
-        setUserCardInteractions(prev => ({
-          ...prev,
-          [currentSurvey.id]: { ...interactionData, docId: existingUserInteraction.docId, answeredAt: new Date() } 
-        }));
+        setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: existingUserInteraction.docId }}));
       } else {
         const newDocRef = await addDoc(collection(db, "userSurveyAnswers"), interactionData);
-        setUserCardInteractions(prev => ({
-          ...prev,
-          [currentSurvey.id]: { ...interactionData, docId: newDocRef.id, answeredAt: new Date() } 
-        }));
+        setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocRef.id }}));
       }
       
-      const updatedSurveyDoc = await getDoc(surveyRef);
-      let updatedCardForStatsDisplay: Survey | null = null;
-      if (updatedSurveyDoc.exists()) {
-          const data = updatedSurveyDoc.data();
-          updatedCardForStatsDisplay = {
-            id: updatedSurveyDoc.id,
-            ...data,
-            createdAt: (data.createdAt as Timestamp)?.toDate(),
-            updatedAt: (data.updatedAt as Timestamp)?.toDate(),
-          } as Survey;
-          setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedCardForStatsDisplay! : card));
+      if (actualSurveyStatChangesMade || interactionType === 'answer') { // Fetch fresh data if stats changed OR if it was an answer submission
+        const updatedSurveyDoc = await getDoc(surveyRef);
+        if (updatedSurveyDoc.exists()) {
+            const data = updatedSurveyDoc.data();
+            updatedSurveyForStats = {
+              id: updatedSurveyDoc.id, ...data,
+              createdAt: (data.createdAt as Timestamp)?.toDate(),
+              updatedAt: (data.updatedAt as Timestamp)?.toDate(),
+            } as Survey;
+            setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedSurveyForStats : card));
+        }
       }
-      setStatsForCard(updatedCardForStatsDisplay || currentSurvey); 
-
+      return { updatedSurveyForStats, interactionProcessed: true };
     } catch (error) {
       console.error("Error updating card/interaction:", error);
-      setStatsForCard(currentSurvey); 
+      return { updatedSurveyForStats: currentSurvey, interactionProcessed: false };
     }
   };
+
+  const handleCardAnswerSubmission = async (submittedAnswer?: any) => {
+    if (publicCards.length === 0 || !publicCards[currentCardIndex]) return;
+    const currentSurvey = publicCards[currentCardIndex];
+    const currentQuestion = currentSurvey.questions?.[0];
+    if (!currentQuestion) {
+      proceedToNextCard(); 
+      return;
+    }
+    const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'answer', submittedAnswer);
+    setStatsForCard(updatedSurveyForStats);
+  };
+
+  const handleCardSkip = async () => {
+    if (publicCards.length === 0 || !publicCards[currentCardIndex]) return;
+    const currentSurvey = publicCards[currentCardIndex];
+    const currentQuestion = currentSurvey.questions?.[0];
+    if (!currentQuestion) {
+      proceedToNextCard(); 
+      return;
+    }
+    // Process the skip but don't show stats for it immediately.
+    // The stats will be updated in Firestore.
+    await processCardInteraction(currentSurvey, currentQuestion, 'skip');
+    proceedToNextCard(); // Directly proceed without showing stats for the skipped card
+  };
+
 
   const proceedToNextCard = () => {
     setStatsForCard(null); 
@@ -242,7 +261,8 @@ export default function HomePage() {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading...</p></div>;
   }
 
-  if (!user && !authLoading) {
+  if (!user && !authLoading) { // Check after authLoading is false
+    // router.push('/login') is handled by useEffect, this is a fallback or alternative way to display
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
   
@@ -318,7 +338,7 @@ export default function HomePage() {
   const currentQuestion = currentSurvey?.questions?.[0]; 
   const currentUserInitialAnswer = userCardInteractions[currentSurvey?.id]?.answerValue;
 
-  if (!currentSurvey || !currentQuestion) {
+  if (!currentSurvey || !currentQuestion) { // This check happens after potential redirect if !user
     return <div className="text-center py-10 text-muted-foreground">Loading card data or no question available...</div>;
   }
 
@@ -335,7 +355,8 @@ export default function HomePage() {
           question={currentQuestion}
           questionNumber={currentCardIndex + 1}
           totalQuestions={publicCards.length}
-          onNext={handleCardInteractionCompletion} 
+          onNext={handleCardAnswerSubmission} // For answer submission
+          onSkip={handleCardSkip}         // For explicit skip
           isLastQuestion={currentCardIndex === publicCards.length - 1}
           initialAnswer={currentUserInitialAnswer}
         />

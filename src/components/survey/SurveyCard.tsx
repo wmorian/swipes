@@ -8,14 +8,15 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect } from "react";
-import type { Question } from "@/types"; // Assuming Question type definition
+import type { Question } from "@/types";
 import { ChevronRight, SkipForward } from "lucide-react";
 
 interface SurveyCardProps {
   question: Question;
   questionNumber: number;
   totalQuestions: number;
-  onNext: (answer?: any) => void;
+  onNext: (answer?: any) => void; // For submitting an answer
+  onSkip: () => void; // For explicitly skipping
   isLastQuestion: boolean;
   initialAnswer?: string | undefined | null;
 }
@@ -25,6 +26,7 @@ export default function SurveyCard({
   questionNumber,
   totalQuestions,
   onNext,
+  onSkip, // New prop
   isLastQuestion,
   initialAnswer,
 }: SurveyCardProps) {
@@ -44,18 +46,18 @@ export default function SurveyCard({
     }
   }, [initialAnswer, question.id, question.type]);
 
-  const handleNextInternal = () => {
+  const handleSubmitAnswer = () => { // Renamed from handleNextInternal for clarity
     let answer;
     if (question.type === "multiple-choice" || question.type === "rating") {
       answer = selectedValue;
     } else if (question.type === "text") {
-      answer = textAnswer;
+      answer = textAnswer.trim() === "" ? undefined : textAnswer; // Treat empty text as undefined for submission
     }
     onNext(answer);
   };
 
-  const handleSkip = () => {
-    onNext(undefined); // Signal a skip by passing undefined
+  const handleSkipClick = () => {
+    onSkip(); // Call the new onSkip handler
   }
 
   const renderQuestionInput = () => {
@@ -108,10 +110,10 @@ export default function SurveyCard({
         {renderQuestionInput()}
       </CardContent>
       <CardFooter className="flex justify-between">
-        <Button variant="outline" onClick={handleSkip}>
+        <Button variant="outline" onClick={handleSkipClick}>
           <SkipForward className="mr-2 h-4 w-4" /> Skip
         </Button>
-        <Button onClick={handleNextInternal} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+        <Button onClick={handleSubmitAnswer} className="bg-accent hover:bg-accent/90 text-accent-foreground">
           {isLastQuestion ? "Finish" : "Next"} <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>
