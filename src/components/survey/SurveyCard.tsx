@@ -15,8 +15,8 @@ interface SurveyCardProps {
   question: Question;
   questionNumber: number;
   totalQuestions: number;
-  onNext: (answer?: any) => void; // For submitting an answer
-  onSkip: () => void; // For explicitly skipping
+  onNext: (answer?: any) => void;
+  onSkip: () => void;
   isLastQuestion: boolean;
   initialAnswer?: string | undefined | null;
 }
@@ -26,7 +26,7 @@ export default function SurveyCard({
   questionNumber,
   totalQuestions,
   onNext,
-  onSkip, // New prop
+  onSkip,
   isLastQuestion,
   initialAnswer,
 }: SurveyCardProps) {
@@ -34,69 +34,46 @@ export default function SurveyCard({
   const [textAnswer, setTextAnswer] = useState<string>("");
 
   useEffect(() => {
+    // Reset local state when question ID changes to avoid carrying over selections
+    setSelectedValue(undefined);
+    setTextAnswer("");
+
     if (question.type === "multiple-choice" || question.type === "rating") {
       setSelectedValue(initialAnswer || undefined);
     } else if (question.type === "text") {
       setTextAnswer(initialAnswer || "");
     }
-    
-    if (initialAnswer === null || initialAnswer === undefined) {
+    // If initialAnswer is explicitly null (meaning it was skipped by user before), ensure selection is cleared
+    if (initialAnswer === null) {
         setSelectedValue(undefined);
         setTextAnswer("");
     }
   }, [initialAnswer, question.id, question.type]);
 
-  const handleSubmitAnswer = () => { // Renamed from handleNextInternal for clarity
+  const handleSubmitAnswer = () => {
     let answer;
     if (question.type === "multiple-choice" || question.type === "rating") {
       answer = selectedValue;
     } else if (question.type === "text") {
-      answer = textAnswer.trim() === "" ? undefined : textAnswer; // Treat empty text as undefined for submission
+      answer = textAnswer.trim() === "" ? undefined : textAnswer;
     }
     onNext(answer);
   };
 
   const handleSkipClick = () => {
-    onSkip(); // Call the new onSkip handler
+    onSkip();
   }
 
-  const renderQuestionInput = () => {
-    switch (question.type) {
-      case "multiple-choice":
-        return (
-          <RadioGroup value={selectedValue} onValueChange={setSelectedValue} className="space-y-2">
-            {question.options?.map((option, index) => (
-              <div key={index} className="flex items-center space-x-2 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                <RadioGroupItem value={option} id={`${question.id}-option-${index}`} />
-                <Label htmlFor={`${question.id}-option-${index}`} className="cursor-pointer flex-grow">{option}</Label>
-              </div>
-            ))}
-          </RadioGroup>
-        );
-      case "text":
-        return (
-          <Textarea
-            placeholder="Type your answer here..."
-            value={textAnswer}
-            onChange={(e) => setTextAnswer(e.target.value)}
-            rows={4}
-          />
-        );
-      case "rating":
-        return (
-          <RadioGroup value={selectedValue} onValueChange={setSelectedValue} className="flex space-x-2 justify-center">
-            {[1, 2, 3, 4, 5].map((rating) => (
-              <div key={rating} className="flex flex-col items-center space-y-1">
-                <Label htmlFor={`${question.id}-rating-${rating}`} className="text-sm">{rating}</Label>
-                <RadioGroupItem value={String(rating)} id={`${question.id}-rating-${rating}`} className="h-6 w-6"/>
-              </div>
-            ))}
-          </RadioGroup>
-        );
-      default:
-        return <p>Unsupported question type.</p>;
+  const isAnswerSelectedOrEntered = () => {
+    if (question.type === "multiple-choice" || question.type === "rating") {
+      return !!selectedValue;
+    } else if (question.type === "text") {
+      return textAnswer.trim() !== "";
     }
+    return false;
   };
+
+  const canSubmit = isAnswerSelectedOrEntered();
 
   return (
     <Card className="w-full shadow-xl animate-in fade-in-50 duration-500">
@@ -107,13 +84,42 @@ export default function SurveyCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="min-h-[150px]">
-        {renderQuestionInput()}
+        {question.type === "multiple-choice" ? (
+          <RadioGroup value={selectedValue} onValueChange={setSelectedValue} className="space-y-2">
+            {question.options?.map((option, index) => (
+              <div key={index} className="flex items-center space-x-2 p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                <RadioGroupItem value={option} id={`${question.id}-option-${index}`} />
+                <Label htmlFor={`${question.id}-option-${index}`} className="cursor-pointer flex-grow">{option}</Label>
+              </div>
+            ))}
+          </RadioGroup>
+        ) : question.type === "text" ? (
+          <Textarea
+            placeholder="Type your answer here..."
+            value={textAnswer}
+            onChange={(e) => setTextAnswer(e.target.value)}
+            rows={4}
+          />
+        ) : question.type === "rating" ? (
+          <RadioGroup value={selectedValue} onValueChange={setSelectedValue} className="flex space-x-2 justify-center">
+            {[1, 2, 3, 4, 5].map((rating) => (
+              <div key={rating} className="flex flex-col items-center space-y-1">
+                <Label htmlFor={`${question.id}-rating-${rating}`} className="text-sm">{rating}</Label>
+                <RadioGroupItem value={String(rating)} id={`${question.id}-rating-${rating}`} className="h-6 w-6"/>
+              </div>
+            ))}
+          </RadioGroup>
+        ) : <p>Unsupported question type.</p>}
       </CardContent>
       <CardFooter className="flex justify-between">
         <Button variant="outline" onClick={handleSkipClick}>
           <SkipForward className="mr-2 h-4 w-4" /> Skip
         </Button>
-        <Button onClick={handleSubmitAnswer} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+        <Button 
+          onClick={handleSubmitAnswer} 
+          className="bg-accent hover:bg-accent/90 text-accent-foreground"
+          disabled={!canSubmit}
+        >
           {isLastQuestion ? "Finish" : "Next"} <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>
