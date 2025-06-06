@@ -44,12 +44,16 @@ export default function HomePage() {
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
   const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
 
-  const fetchSurveyData = async () => {
+  const fetchSurveyData = async (isManualRefresh: boolean = false) => {
     if (!user) { 
       setIsLoading(false);
       return;
     }
-    setIsLoading(true);
+    if (!isManualRefresh) {
+      setIsLoading(true);
+    }
+    
+    // These resets are appropriate for both initial load and manual refresh
     setCurrentCardIndex(0); 
     setStatsForCard(null);
     setUserInitialSelection(undefined);
@@ -102,6 +106,7 @@ export default function HomePage() {
       setPublicCards([]);
       setUserCardInteractions({});
     } finally {
+      // Always ensure isLoading is false after fetch, even if it wasn't set to true for manual refresh
       setIsLoading(false);
     }
   };
@@ -109,7 +114,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!authLoading) {
       if (user) {
-        fetchSurveyData();
+        fetchSurveyData(false); // Initial fetch, show loader
       } else {
         router.push('/login');
       }
@@ -118,7 +123,7 @@ export default function HomePage() {
   }, [user, authLoading]); 
 
   useEffect(() => {
-    if (authLoading || isLoading) return; 
+    if (authLoading || isLoading && publicCards.length === 0) return; // Adjusted condition for isLoading
     if (!user) {
       setDisplayedCards([]);
       setCurrentCardIndex(0);
@@ -306,7 +311,7 @@ export default function HomePage() {
   };
   
   const resetCardView = () => {
-    fetchSurveyData(); 
+    fetchSurveyData(true); // Manual refresh, don't show global loader
   };
 
   const handleFilterChange = (value: string) => {
@@ -331,7 +336,9 @@ export default function HomePage() {
   if (!user && !authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
-  if (isLoading && user) {
+  // Show "Loading cards..." only if isLoading is true AND publicCards haven't been loaded yet (or are empty)
+  // This prevents the loader from showing during a manual refresh if cards are already displayed.
+  if (isLoading && user && publicCards.length === 0) {
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
@@ -416,7 +423,7 @@ export default function HomePage() {
     let showRefreshButton = false;
     let refreshButtonText = "View Cards Again";
     
-    const showEmptyOrAllViewedState = !isLoading && user && (
+    const showEmptyOrAllViewedState = (!isLoading || publicCards.length > 0 ) && user && ( // Ensure not in initial loading AND ( (displayed empty) OR (current index past displayed) )
       (displayedCards.length === 0) || 
       (currentCardIndex >= displayedCards.length && displayedCards.length > 0) 
     );
@@ -481,6 +488,8 @@ export default function HomePage() {
                                             : userCardInteractions[currentSurvey?.id]?.answerValue;
 
     if (!currentSurvey || !currentQuestion) { 
+      // This case should ideally be covered by initial loader or empty states,
+      // but as a fallback if data is still processing or inconsistent after loader.
       return <p className="text-muted-foreground mt-3">Preparing card...</p>;
     }
 
@@ -532,3 +541,4 @@ export default function HomePage() {
     
 
     
+
