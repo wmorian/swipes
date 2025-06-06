@@ -14,7 +14,7 @@ import { useSurveyCreation } from "@/context/SurveyCreationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import SurveyCard from "@/components/survey/SurveyCard"; 
+import SurveyCard from "@/components/survey/SurveyCard";
 import type { Question as SurveyCardQuestion, Survey } from "@/types";
 import { ArrowLeft, CheckCircle, ChevronDown, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
@@ -33,7 +33,7 @@ export default function CreateSurveyPreviewPage() {
 
 
   useEffect(() => {
-    if (isRedirectingAfterFinalize || isFinalizing) { 
+    if (isRedirectingAfterFinalize || isFinalizing) {
       return;
     }
 
@@ -41,28 +41,26 @@ export default function CreateSurveyPreviewPage() {
       router.push(`/login?redirect=/survey/create/preview${editId ? `?editId=${editId}` : ''}`);
       return;
     }
-    
-    // If editing, and data isn't loaded for this editId, attempt to load it.
-    // This is a fallback in case the user lands here directly via URL with editId
+
     if (user && editId && (!surveyData.id || surveyData.id !== editId) && !isLoadingSurveyForEdit) {
       loadSurveyForEditing(editId, user.id).then(success => {
-        if (!success) router.push('/dashboard'); // Or show error
+        if (!success) router.push('/dashboard');
       });
     } else if (surveyData.questions.length === 0 || surveyData.questions.some(q => !q.text.trim() || q.options.some(opt => !opt.trim()))) {
-        if (!isLoadingSurveyForEdit && !editId) { // Only redirect if not loading an edit and not in edit mode
+        if (!isLoadingSurveyForEdit && !editId) {
             toast({ title: "Incomplete Question", description: "Please ensure your question and options are filled out.", variant: "destructive"});
-            router.push('/survey/create/questions'); 
+            router.push(`/survey/create/questions${editId ? `?editId=${editId}` : ''}`);
             return;
         }
     }
-    setCurrentStep(2); 
+    setCurrentStep(2);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, router, surveyData, setCurrentStep, toast, isFinalizing, isRedirectingAfterFinalize, editId, isLoadingSurveyForEdit, loadSurveyForEditing]);
-  
+  }, [user, authLoading, router, surveyData.id, surveyData.questions, setCurrentStep, toast, isFinalizing, isRedirectingAfterFinalize, editId, isLoadingSurveyForEdit, loadSurveyForEditing]);
+
   const mapContextQuestionToSurveyCardQuestion = (cq: typeof surveyData.questions[0]): SurveyCardQuestion => ({
     id: cq.id,
     text: cq.text,
-    type: cq.type, 
+    type: cq.type,
     options: cq.options,
   });
 
@@ -81,35 +79,33 @@ export default function CreateSurveyPreviewPage() {
       return;
     }
 
-
     setIsFinalizing(true);
 
-    const finalDescription = surveyData.description || ""; 
+    const finalDescription = surveyData.description || "";
 
     const surveyPayload: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt?: any, updatedAt: any } = {
-        title: "", 
-        description: finalDescription, 
+        title: "", // Single-card surveys don't use a main title
+        description: finalDescription,
         surveyType: "single-card",
         questions: surveyData.questions,
         questionCount: 1,
-        responses: surveyData.id ? (surveyData as Survey).responses : 0, // Keep existing responses if editing, else 0
-        status: statusToSet, 
-        privacy: 'Public', 
+        responses: surveyData.responses ?? 0,
+        status: statusToSet,
+        privacy: 'Public', // Single cards are public
         createdBy: user.id,
-        optionCounts: surveyData.id 
-          ? (surveyData as Survey).optionCounts // Keep existing counts if editing
-          : surveyData.questions[0].options.reduce((acc, option) => { // Initialize for new
-              acc[option] = 0;
-              return acc;
-            }, {} as Record<string, number>),
-        skipCount: surveyData.id ? (surveyData as Survey).skipCount : 0, // Keep existing if editing, else 0
+        optionCounts: surveyData.optionCounts ??
+                      surveyData.questions[0].options.reduce((acc, option) => {
+                        acc[option] = 0;
+                        return acc;
+                      }, {} as Record<string, number>),
+        skipCount: surveyData.skipCount ?? 0,
         updatedAt: serverTimestamp(),
     };
 
     try {
-      let finalizedSurveyId = surveyData.id; // Use existing ID if editing
+      let finalizedSurveyId = surveyData.id;
 
-      if (finalizedSurveyId) { // Editing existing draft
+      if (finalizedSurveyId) {
         const surveyRef = doc(db, "surveys", finalizedSurveyId);
         await updateDoc(surveyRef, surveyPayload);
         toast({
@@ -117,8 +113,8 @@ export default function CreateSurveyPreviewPage() {
           description: `Your survey card has been ${statusToSet === 'Active' ? 'published' : 'updated'}. ID: ${finalizedSurveyId}`,
           variant: "default"
         });
-      } else { // Creating new survey
-        surveyPayload.createdAt = serverTimestamp(); // Set createdAt only for new surveys
+      } else {
+        surveyPayload.createdAt = serverTimestamp();
         const docRef = await addDoc(collection(db, "surveys"), surveyPayload);
         finalizedSurveyId = docRef.id;
         toast({
@@ -127,10 +123,10 @@ export default function CreateSurveyPreviewPage() {
           variant: "default"
         });
       }
-      
-      setIsRedirectingAfterFinalize(true); 
-      resetSurveyCreation(); 
-      router.push(user ? `/dashboard?surveyMsgId=${finalizedSurveyId}` : `/`); // Use a generic param like surveyMsgId
+
+      setIsRedirectingAfterFinalize(true);
+      resetSurveyCreation();
+      router.push(user ? `/dashboard?surveyMsgId=${finalizedSurveyId}` : `/`);
     } catch (error) {
       console.error("Error finalizing survey: ", error);
       toast({
@@ -138,12 +134,12 @@ export default function CreateSurveyPreviewPage() {
         description: "Could not finalize your survey card. Please try again.",
         variant: "destructive"
       });
-      setIsFinalizing(false); 
+      setIsFinalizing(false);
     }
   };
 
   const handleBack = () => {
-    setCurrentStep(1); 
+    setCurrentStep(1);
     router.push(`/survey/create/questions${editId ? `?editId=${editId}` : ''}`);
   };
 
@@ -160,8 +156,7 @@ export default function CreateSurveyPreviewPage() {
     );
   }
 
-   if (surveyData.questions.length === 0) { 
-    // This might happen if directly navigating here with an invalid editId or data failed to load silently
+   if (surveyData.questions.length === 0) {
     return <div className="text-center py-10">Loading question data or incomplete configuration... <Button onClick={() => router.push('/dashboard')}>Go to Dashboard</Button></div>;
   }
 
@@ -183,11 +178,12 @@ export default function CreateSurveyPreviewPage() {
             <SurveyCard
               question={surveyCardQuestion}
               questionNumber={1}
-              totalQuestions={1} 
-              onNext={() => { /* Preview mode, no actual submission */ }} 
+              totalQuestions={1}
+              onNext={() => { /* Preview mode, no actual submission */ }}
               onSkip={() => { /* Preview mode, no actual submission */ }}
               isLastQuestion={true}
-              initialAnswer={undefined} 
+              initialAnswer={undefined}
+              // No contextualMode needed for preview, always default behavior
             />
           ) : (
             <p className="text-center text-destructive">No question available for preview.</p>
@@ -206,14 +202,14 @@ export default function CreateSurveyPreviewPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem 
-                onClick={() => handleFinalizeSurvey('Active')} 
+              <DropdownMenuItem
+                onClick={() => handleFinalizeSurvey('Active')}
                 disabled={isFinalizing || isRedirectingAfterFinalize}
               >
                 <CheckCircle className="mr-2 h-4 w-4" /> {surveyData.id ? "Publish Draft" : "Publish"}
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handleFinalizeSurvey('Draft')} 
+              <DropdownMenuItem
+                onClick={() => handleFinalizeSurvey('Draft')}
                 disabled={isFinalizing || isRedirectingAfterFinalize}
               >
                 {surveyData.id ? "Update Draft" : "Save as Draft"}

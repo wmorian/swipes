@@ -10,8 +10,8 @@ import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 
 const questionSchema = z.object({
-  id: z.string().default(() => `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`), 
-  text: z.string().min(1, "Question text cannot be empty."), 
+  id: z.string().default(() => `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`),
+  text: z.string().min(1, "Question text cannot be empty."),
   type: z.literal("multiple-choice"),
   options: z.array(z.string().min(1, "Option text cannot be empty."))
     .min(1, "At least one option is required.")
@@ -21,11 +21,14 @@ export type SurveyQuestionContext = z.infer<typeof questionSchema>;
 
 export type SurveyCreationData = {
   id?: string; // ID of the survey if editing
-  surveyType: "single-card"; 
-  title?: string; 
-  description: string; 
-  privacy?: "public" | "invite-only"; 
-  questions: Array<SurveyQuestionContext>; 
+  surveyType: "single-card";
+  title?: string;
+  description: string;
+  privacy?: "Public"; // Single-card surveys are public
+  questions: Array<SurveyQuestionContext>;
+  responses?: number;
+  optionCounts?: Record<string, number>;
+  skipCount?: number;
 };
 
 interface SurveyCreationContextType {
@@ -35,7 +38,7 @@ interface SurveyCreationContextType {
   setCurrentStep: Dispatch<SetStateAction<number>>;
   isLoadingSurveyForEdit: boolean;
   loadSurveyForEditing: (surveyId: string, currentUserId?: string) => Promise<boolean>;
-  addQuestion: () => void; 
+  addQuestion: () => void;
   updateQuestion: (index: number, question: SurveyQuestionContext) => void;
   removeQuestion: (index: number) => void;
   resetSurveyCreation: () => void;
@@ -43,17 +46,20 @@ interface SurveyCreationContextType {
 
 const getDefaultQuestion = (): SurveyQuestionContext => ({
   id: `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
-  text: "", 
-  type: "multiple-choice", 
+  text: "",
+  type: "multiple-choice",
   options: ["", ""],
 });
 
 const defaultSurveyData: SurveyCreationData = {
   surveyType: "single-card",
-  title: "", 
-  description: "", 
-  privacy: "Public", 
+  title: "",
+  description: "",
+  privacy: "Public",
   questions: [getDefaultQuestion()],
+  responses: 0,
+  optionCounts: {},
+  skipCount: 0,
 };
 
 const SurveyCreationContext = createContext<SurveyCreationContextType | undefined>(undefined);
@@ -72,8 +78,7 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
 
       if (surveySnap.exists()) {
         const fetchedSurvey = surveySnap.data() as Survey;
-        
-        // Security check: Ensure the survey belongs to the current user and is a draft
+
         if (fetchedSurvey.createdBy !== currentUserId) {
           toast({ title: "Access Denied", description: "You do not have permission to edit this survey.", variant: "destructive" });
           setIsLoadingSurveyForEdit(false);
@@ -87,16 +92,19 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
 
         setSurveyData({
           id: surveySnap.id,
-          surveyType: "single-card", // Assuming only single-card for now
+          surveyType: fetchedSurvey.surveyType || "single-card",
           title: fetchedSurvey.title || "",
           description: fetchedSurvey.description || "",
-          privacy: "Public", // Single cards are public
+          privacy: "Public", // single-card are always public
           questions: fetchedSurvey.questions ? fetchedSurvey.questions.map(q => ({
             id: q.id || `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
             text: q.text,
-            type: q.type as "multiple-choice", // Assuming only this type for now
+            type: q.type as "multiple-choice",
             options: q.options || ["", ""],
           })) : [getDefaultQuestion()],
+          responses: fetchedSurvey.responses ?? 0,
+          optionCounts: fetchedSurvey.optionCounts ?? {},
+          skipCount: fetchedSurvey.skipCount ?? 0,
         });
         setCurrentStep(1);
         setIsLoadingSurveyForEdit(false);
@@ -104,7 +112,7 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
       } else {
         toast({ title: "Not Found", description: "Survey not found.", variant: "destructive" });
         setIsLoadingSurveyForEdit(false);
-        resetSurveyCreation(); // Reset to avoid inconsistent state
+        resetSurveyCreation();
         return false;
       }
     } catch (error) {
@@ -142,7 +150,7 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
             console.warn("Cannot remove the question from a single-card survey. Edit it instead.");
             return prev;
         }
-        if (prev.questions.length <= 1) { 
+        if (prev.questions.length <= 1) {
             console.warn("Survey must have at least one question.");
             return prev;
         }
@@ -152,25 +160,28 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
         };
     });
   }, []);
-  
+
   const resetSurveyCreation = useCallback(() => {
     setSurveyData({
-        id: undefined, // Clear ID
+        id: undefined,
         surveyType: "single-card",
         title: "",
         description: "",
         privacy: "Public",
         questions: [getDefaultQuestion()],
+        responses: 0,
+        optionCounts: {},
+        skipCount: 0,
     });
-    setCurrentStep(1); 
+    setCurrentStep(1);
     setIsLoadingSurveyForEdit(false);
   }, []);
 
   return (
-    <SurveyCreationContext.Provider value={{ 
-        surveyData, 
-        setSurveyData, 
-        currentStep, 
+    <SurveyCreationContext.Provider value={{
+        surveyData,
+        setSurveyData,
+        currentStep,
         setCurrentStep,
         isLoadingSurveyForEdit,
         loadSurveyForEditing,
