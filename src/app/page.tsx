@@ -6,11 +6,10 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw, Filter, ArrowUpDown, SlidersHorizontal } from 'lucide-react';
+import { ArrowRight, RefreshCw } from 'lucide-react'; // Removed Filter, ArrowUpDown, SlidersHorizontal
 import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
 import { 
   collection, 
@@ -42,7 +41,7 @@ export default function HomePage() {
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('not-responded');
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
-  const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
+  // Removed isFilterPopoverOpen state
 
   const fetchSurveyData = async (isManualRefresh: boolean = false) => {
     if (!user) { 
@@ -53,7 +52,6 @@ export default function HomePage() {
       setIsLoading(true);
     }
     
-    // These resets are appropriate for both initial load and manual refresh
     setCurrentCardIndex(0); 
     setStatsForCard(null);
     setUserInitialSelection(undefined);
@@ -106,7 +104,6 @@ export default function HomePage() {
       setPublicCards([]);
       setUserCardInteractions({});
     } finally {
-      // Always ensure isLoading is false after fetch, even if it wasn't set to true for manual refresh
       setIsLoading(false);
     }
   };
@@ -114,7 +111,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!authLoading) {
       if (user) {
-        fetchSurveyData(false); // Initial fetch, show loader
+        fetchSurveyData(false); 
       } else {
         router.push('/login');
       }
@@ -123,7 +120,7 @@ export default function HomePage() {
   }, [user, authLoading]); 
 
   useEffect(() => {
-    if (authLoading || isLoading && publicCards.length === 0) return; // Adjusted condition for isLoading
+    if (authLoading || (isLoading && publicCards.length === 0)) return; 
     if (!user) {
       setDisplayedCards([]);
       setCurrentCardIndex(0);
@@ -311,24 +308,15 @@ export default function HomePage() {
   };
   
   const resetCardView = () => {
-    fetchSurveyData(true); // Manual refresh, don't show global loader
+    fetchSurveyData(true); 
   };
 
   const handleFilterChange = (value: string) => {
     setSelectedFilter(value as FilterType);
-    setIsFilterPopoverOpen(false);
+    // Removed setIsFilterPopoverOpen(false); 
   };
 
-  const handleTopicFilterClick = () => {
-    console.log('Topic filter clicked - coming soon!');
-    setIsFilterPopoverOpen(false);
-  }
-
-  const handleSortClick = () => {
-    console.log('Sort clicked - coming soon!');
-    setIsFilterPopoverOpen(false);
-  }
-
+  // Removed handleTopicFilterClick and handleSortClick methods
 
   if (authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading authentication...</p></div>;
@@ -336,38 +324,11 @@ export default function HomePage() {
   if (!user && !authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
-  // Show "Loading cards..." only if isLoading is true AND publicCards haven't been loaded yet (or are empty)
-  // This prevents the loader from showing during a manual refresh if cards are already displayed.
   if (isLoading && user && publicCards.length === 0) {
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
-  const filterSortControlsPopoverContent = (
-    <div className="p-4 space-y-4">
-      <div>
-        <h4 className="text-sm font-medium mb-2 text-foreground">Filter By Status</h4>
-        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="not-responded">New</TabsTrigger>
-            <TabsTrigger value="responded">Answered</TabsTrigger>
-            <TabsTrigger value="skipped">Skipped</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-       <div>
-        <h4 className="text-sm font-medium mb-1 text-foreground">Filter By Topic</h4>
-        <Button variant="outline" className="w-full justify-start" onClick={handleTopicFilterClick}>
-          <Filter className="mr-2 h-4 w-4" /> Topics: All
-        </Button>
-      </div>
-      <div>
-        <h4 className="text-sm font-medium mb-1 text-foreground">Sort By</h4>
-        <Button variant="outline" className="w-full justify-start" onClick={handleSortClick}>
-          <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
-        </Button>
-      </div>
-    </div>
-  );
+  // Removed filterSortControlsPopoverContent
 
   const renderPageContent = () => {
     if (statsForCard) {
@@ -423,7 +384,7 @@ export default function HomePage() {
     let showRefreshButton = false;
     let refreshButtonText = "View Cards Again";
     
-    const showEmptyOrAllViewedState = (!isLoading || publicCards.length > 0 ) && user && ( // Ensure not in initial loading AND ( (displayed empty) OR (current index past displayed) )
+    const showEmptyOrAllViewedState = (!isLoading || publicCards.length > 0 ) && user && ( 
       (displayedCards.length === 0) || 
       (currentCardIndex >= displayedCards.length && displayedCards.length > 0) 
     );
@@ -436,7 +397,7 @@ export default function HomePage() {
       } else if (displayedCards.length === 0 && publicCards.length > 0) { 
           if (selectedFilter === 'not-responded') {
             emptyStateTitle = "All New Cards Viewed!";
-            emptyStateDescription = "You've seen all available new cards. You can check for more or try another filter.";
+            emptyStateDescription = "You've seen all available new cards. You can check for more or try refreshing.";
             showRefreshButton = true;
             refreshButtonText = "Check for New Cards";
           } else if (selectedFilter === 'responded') {
@@ -488,8 +449,6 @@ export default function HomePage() {
                                             : userCardInteractions[currentSurvey?.id]?.answerValue;
 
     if (!currentSurvey || !currentQuestion) { 
-      // This case should ideally be covered by initial loader or empty states,
-      // but as a fallback if data is still processing or inconsistent after loader.
       return <p className="text-muted-foreground mt-3">Preparing card...</p>;
     }
 
@@ -515,21 +474,15 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col items-center justify-start flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
+      {/* Tabs directly on page */}
       <div className="w-full max-w-xs sm:max-w-sm mx-auto mb-3">
-        <Popover open={isFilterPopoverOpen} onOpenChange={setIsFilterPopoverOpen}>
-          <PopoverTrigger asChild>
-            <Button 
-              variant="outline" 
-              className="w-full"
-            >
-              <SlidersHorizontal className="mr-2 h-4 w-4" />
-              Filter & Sort
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[calc(100vw-2rem)] max-w-xs sm:max-w-sm p-0" align="start">
-            {filterSortControlsPopoverContent}
-          </PopoverContent>
-        </Popover>
+        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="not-responded">New</TabsTrigger>
+            <TabsTrigger value="responded">Answered</TabsTrigger>
+            <TabsTrigger value="skipped">Skipped</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
       
       <div className="flex flex-col items-center justify-center flex-grow w-full">
@@ -542,3 +495,6 @@ export default function HomePage() {
 
     
 
+
+
+    
