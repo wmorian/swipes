@@ -3,7 +3,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ActivitySquare, Home, PlusSquare, LayoutDashboard, LogIn } from 'lucide-react';
+import { Layers, Home, PlusSquare, LayoutDashboard, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import UserNav from './UserNav';
 import { useAuth } from '@/context/AuthContext';
@@ -64,8 +64,8 @@ export default function Header() {
       <header className="bg-card border-b border-border shadow-sm sticky top-0 z-40">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="text-2xl font-bold text-primary font-headline flex items-center gap-2">
-            <ActivitySquare className="h-7 w-7 text-accent" />
-            CardSurvey
+            <Layers className="h-7 w-7 text-accent" />
+            swipes
           </Link>
 
           {/* Desktop Navigation */}
@@ -82,7 +82,7 @@ export default function Header() {
       </header>
 
       {/* Bottom Navigation Bar - Mobile Only */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border shadow-t-lg p-1 flex justify-around items-center z-40 h-16">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border shadow-t-lg p-1 flex justify-around z-40 h-16">
         {mobileBottomNavItems.map(item => {
           if (item.authRequired && !user) return null;
           const IconComponent = item.icon;
@@ -92,10 +92,10 @@ export default function Header() {
               <Button
                 variant="ghost"
                 size="lg"
-                className={`w-full h-full ${isActive ? 'text-primary' : 'text-muted-foreground'}`}
+                className={`w-full h-full ${isActive ? 'text-primary' : 'text-muted-foreground'} [&_svg]:h-7 [&_svg]:w-7`}
                 aria-label={item.label}
               >
-                <IconComponent className="h-7 w-7" />
+                <IconComponent />
               </Button>
             </Link>
           );
@@ -105,10 +105,10 @@ export default function Header() {
              <Button
                 variant="ghost"
                 size="lg"
-                className={`w-full h-full ${pathname === mobileLoginNavItem.href ? 'text-primary' : 'text-muted-foreground'}`}
+                className={`w-full h-full ${pathname === mobileLoginNavItem.href ? 'text-primary' : 'text-muted-foreground'} [&_svg]:h-7 [&_svg]:w-7`}
                 aria-label={mobileLoginNavItem.label}
               >
-               <mobileLoginNavItem.icon className="h-7 w-7" />
+               <mobileLoginNavItem.icon />
              </Button>
            </Link>
         )}
