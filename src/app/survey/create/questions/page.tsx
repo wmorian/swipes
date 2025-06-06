@@ -9,40 +9,57 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useSurveyCreation, type SurveyQuestionContext } from "@/context/SurveyCreationContext";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
-import { ArrowLeft, ArrowRight, PlusCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, PlusCircle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 export default function CreateSurveyQuestionsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { surveyData, setCurrentStep, updateQuestion, setSurveyData } = useSurveyCreation();
+  const searchParams = useSearchParams();
+  const { 
+    surveyData, 
+    setCurrentStep, 
+    updateQuestion, 
+    setSurveyData, 
+    resetSurveyCreation,
+    isLoadingSurveyForEdit,
+    loadSurveyForEditing 
+  } = useSurveyCreation();
   const { toast } = useToast();
+  const editId = searchParams.get('editId');
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push('/login?redirect=/survey/create/questions');
+      router.push(`/login?redirect=/survey/create/questions${editId ? `?editId=${editId}` : ''}`);
       return;
     }
-    // Ensure surveyData is correctly initialized for single-card if not already
-    if (surveyData.surveyType !== "single-card" || surveyData.questions.length === 0) {
-      setSurveyData(prev => ({
-        ...prev,
-        surveyType: "single-card",
-        title: "",
-        description: prev.description || "", 
-        privacy: "Public",
-        questions: prev.questions.length > 0 && prev.questions[0].type === "multiple-choice" ? [prev.questions[0]] : [{
-          id: `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
-          text: "",
-          type: "multiple-choice",
-          options: ["", ""] // Default to two empty options
-        }]
-      }));
+
+    if (editId) {
+      // If there's an editId and surveyData is not for this id or not loaded yet, and not currently loading
+      if (user && (!surveyData.id || surveyData.id !== editId) && !isLoadingSurveyForEdit) {
+        loadSurveyForEditing(editId, user.id).then(success => {
+          if (!success) {
+            // If loading failed (e.g., permissions, not found), redirect or show error
+            router.push('/dashboard'); // Or a more specific error page
+          }
+        });
+      }
+    } else {
+      // If not editing, and surveyData has an ID (meaning it was for an old edit session)
+      // or if it's not initialized for single-card, reset it.
+      if (surveyData.id || surveyData.surveyType !== "single-card" || surveyData.questions.length === 0) {
+         // Only reset if not currently loading an edit. Prevents wiping state if navigating away and back quickly.
+        if(!isLoadingSurveyForEdit) {
+            resetSurveyCreation(); // Resets to a new blank single-card survey
+        }
+      }
     }
-    setCurrentStep(1); // This is now Step 1
-  }, [user, authLoading, router, setCurrentStep, surveyData.surveyType, surveyData.questions, setSurveyData]);
+    setCurrentStep(1); 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, router, editId, isLoadingSurveyForEdit, surveyData.id, loadSurveyForEditing, resetSurveyCreation, setCurrentStep]);
+
 
   const handleQuestionTextChange = (index: number, text: string) => {
     const updatedQuestion = { ...surveyData.questions[index], text };
@@ -80,7 +97,7 @@ export default function CreateSurveyQuestionsPage() {
         toast({ title: "No Question", description: "Please define your question.", variant: "destructive"});
         return false;
     }
-    const q = surveyData.questions[0]; // For single-card, always the first question
+    const q = surveyData.questions[0]; 
     if (!q.text.trim()) {
         toast({ title: "Incomplete Question", description: `Question text is missing.`, variant: "destructive"});
         return false;
@@ -102,85 +119,101 @@ export default function CreateSurveyQuestionsPage() {
     if (!validateQuestions()) {
         return;
     }
-    setCurrentStep(2); // Proceed to Step 2 (Preview)
-    router.push("/survey/create/preview");
+    setCurrentStep(2); 
+    router.push(`/survey/create/preview${editId ? `?editId=${editId}` : ''}`);
   };
 
   const handleBack = () => {
-    // Navigate back to dashboard as Step 1 (details) is removed
+    resetSurveyCreation(); // Clear any draft data if going back
     router.push("/dashboard"); 
   };
   
   if (authLoading || (!user && !authLoading)) {
     return <div className="text-center py-10">{authLoading ? "Loading question editor..." : "Redirecting to login..."}</div>;
   }
+
+  if (isLoadingSurveyForEdit) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Loading survey for editing...</p>
+      </div>
+    );
+  }
   
-  if (surveyData.questions.length === 0) {
+  if (surveyData.questions.length === 0 && !editId) { // Ensure there's a question if not loading an edit
      return <div className="text-center py-10">Initializing question editor...</div>;
   }
+  // If editId is present but questions are still empty, it means loading might still be in progress or failed silently, rely on isLoadingSurveyForEdit
+  if (editId && surveyData.questions.length === 0 && !isLoadingSurveyForEdit && (!surveyData.id || surveyData.id !== editId)) {
+    return <div className="text-center py-10">Error: Could not load survey data for editing. Please try again or go back to dashboard.</div>;
+  }
 
-  // For single card, we always edit the first (and only) question.
-  const question = surveyData.questions[0];
+
+  const question = surveyData.questions[0]; // For single card, always the first (and only) question.
   const qIndex = 0;
+
+  if (!question) { // Safety check, though above logic should prevent this
+    return <div className="text-center py-10">Error: Question data not available.</div>;
+  }
+
 
   return (
     <Card key={question.id || qIndex} className="p-4 space-y-4 shadow-xl w-full max-w-3xl sm:max-w-sm mx-auto">
-    <div className="flex justify-between items-center">
-      <Label htmlFor={`qtext-${qIndex}`} className="text-lg font-semibold text-primary">
-        Your Question
-      </Label>
-    </div>
-    <Textarea
-      id={`qtext-${qIndex}`}
-      placeholder="Enter your question text here..."
-      value={question.text}
-      onChange={(e) => handleQuestionTextChange(qIndex, e.target.value)}
-      rows={3}
-      className="text-base"
-    />
-    
-    <div className="space-y-3">
-      <Label className="text-md font-medium">Options</Label>
-      {question.options.map((option, optIndex) => (
-        <div key={optIndex} className="flex items-center gap-2">
-          <Input
-            type="text"
-            placeholder={`Option ${optIndex + 1}`}
-            value={option}
-            onChange={(e) => handleOptionChange(qIndex, optIndex, e.target.value)}
-            className="text-sm"
-          />
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => handleRemoveOption(qIndex, optIndex)}
-            disabled={question.options.length <= 1}
-            aria-label="Remove option"
-          >
-            <XCircle className="h-5 w-5 text-destructive" />
-          </Button>
-        </div>
-      ))}
-      <Button 
-        variant="outline" 
-        size="sm"
-        onClick={() => handleAddOption(qIndex)}
-        disabled={question.options.length >= 5}
-        className="mt-2 w-full" 
-      >
-        <PlusCircle className="mr-2 h-4 w-4 text-accent" /> Add Option
-      </Button>
-    </div>
-    <CardFooter className="flex justify-between mt-8 pt-6 border-t">
+      <div className="flex justify-between items-center">
+        <Label htmlFor={`qtext-${qIndex}`} className="text-lg font-semibold text-primary">
+          {editId ? "Edit Your Question" : "Your Question"}
+        </Label>
+      </div>
+      <Textarea
+        id={`qtext-${qIndex}`}
+        placeholder="Enter your question text here..."
+        value={question.text}
+        onChange={(e) => handleQuestionTextChange(qIndex, e.target.value)}
+        rows={3}
+        className="text-base"
+      />
+      
+      <div className="space-y-3">
+        <Label className="text-md font-medium">Options</Label>
+        {question.options.map((option, optIndex) => (
+          <div key={optIndex} className="flex items-center gap-2">
+            <Input
+              type="text"
+              placeholder={`Option ${optIndex + 1}`}
+              value={option}
+              onChange={(e) => handleOptionChange(qIndex, optIndex, e.target.value)}
+              className="text-sm"
+            />
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => handleRemoveOption(qIndex, optIndex)}
+              disabled={question.options.length <= 1}
+              aria-label="Remove option"
+            >
+              <XCircle className="h-5 w-5 text-destructive" />
+            </Button>
+          </div>
+        ))}
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={() => handleAddOption(qIndex)}
+          disabled={question.options.length >= 5}
+          className="mt-2 w-full" 
+        >
+          <PlusCircle className="mr-2 h-4 w-4 text-accent" /> Add Option
+        </Button>
+      </div>
+      <CardFooter className="flex justify-between mt-8 pt-6 border-t">
            <Button variant="outline" onClick={handleBack}>
              <ArrowLeft className="mr-2 h-4 w-4 md:mr-2" /> <span className="hidden md:inline">Dashboard</span><span className="md:hidden">Back</span>
            </Button>
            <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground">
              <span className="hidden md:inline">Preview</span><span className="md:hidden">Next</span> <ArrowRight className="ml-2 h-4 w-4 md:ml-2" />
            </Button>
-     </CardFooter>
-  </Card>
-
+       </CardFooter>
+    </Card>
   );
 }
-

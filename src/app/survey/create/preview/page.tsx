@@ -12,22 +12,25 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useSurveyCreation } from "@/context/SurveyCreationContext";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import SurveyCard from "@/components/survey/SurveyCard"; 
 import type { Question as SurveyCardQuestion, Survey } from "@/types";
-import { ArrowLeft, CheckCircle, ChevronDown } from 'lucide-react';
+import { ArrowLeft, CheckCircle, ChevronDown, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { db, serverTimestamp } from "@/lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
 
 export default function CreateSurveyPreviewPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { surveyData, setCurrentStep, resetSurveyCreation } = useSurveyCreation();
+  const searchParams = useSearchParams();
+  const { surveyData, setCurrentStep, resetSurveyCreation, isLoadingSurveyForEdit, loadSurveyForEditing } = useSurveyCreation();
   const { toast } = useToast();
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isRedirectingAfterFinalize, setIsRedirectingAfterFinalize] = useState(false);
+  const editId = searchParams.get('editId');
+
 
   useEffect(() => {
     if (isRedirectingAfterFinalize || isFinalizing) { 
@@ -35,17 +38,26 @@ export default function CreateSurveyPreviewPage() {
     }
 
     if (!authLoading && !user) {
-      router.push('/login?redirect=/survey/create/preview');
+      router.push(`/login?redirect=/survey/create/preview${editId ? `?editId=${editId}` : ''}`);
       return;
     }
-
-    if (surveyData.questions.length === 0 || surveyData.questions.some(q => !q.text.trim() || q.options.some(opt => !opt.trim()))) {
-        toast({ title: "Incomplete Question", description: "Please ensure your question and options are filled out.", variant: "destructive"});
-        router.push('/survey/create/questions'); 
-        return;
+    
+    // If editing, and data isn't loaded for this editId, attempt to load it.
+    // This is a fallback in case the user lands here directly via URL with editId
+    if (user && editId && (!surveyData.id || surveyData.id !== editId) && !isLoadingSurveyForEdit) {
+      loadSurveyForEditing(editId, user.id).then(success => {
+        if (!success) router.push('/dashboard'); // Or show error
+      });
+    } else if (surveyData.questions.length === 0 || surveyData.questions.some(q => !q.text.trim() || q.options.some(opt => !opt.trim()))) {
+        if (!isLoadingSurveyForEdit && !editId) { // Only redirect if not loading an edit and not in edit mode
+            toast({ title: "Incomplete Question", description: "Please ensure your question and options are filled out.", variant: "destructive"});
+            router.push('/survey/create/questions'); 
+            return;
+        }
     }
     setCurrentStep(2); 
-  }, [user, authLoading, router, surveyData, setCurrentStep, toast, isFinalizing, isRedirectingAfterFinalize]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, router, surveyData, setCurrentStep, toast, isFinalizing, isRedirectingAfterFinalize, editId, isLoadingSurveyForEdit, loadSurveyForEditing]);
   
   const mapContextQuestionToSurveyCardQuestion = (cq: typeof surveyData.questions[0]): SurveyCardQuestion => ({
     id: cq.id,
@@ -63,44 +75,66 @@ export default function CreateSurveyPreviewPage() {
       toast({ title: "No Question", description: "Cannot finalize a card without a question.", variant: "destructive" });
       return;
     }
+    if (surveyData.questions.some(q => !q.text.trim() || q.options.some(opt => !opt.trim()))) {
+      toast({ title: "Incomplete Question", description: "Please ensure your question and options are filled out.", variant: "destructive"});
+      router.push(`/survey/create/questions${editId ? `?editId=${editId}` : ''}`);
+      return;
+    }
+
 
     setIsFinalizing(true);
 
     const finalDescription = surveyData.description || ""; 
 
-    const newSurveyFirestoreData: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
+    const surveyPayload: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt?: any, updatedAt: any } = {
         title: "", 
         description: finalDescription, 
         surveyType: "single-card",
         questions: surveyData.questions,
         questionCount: 1,
-        responses: 0,
-        status: statusToSet, // Use the passed status
+        responses: surveyData.id ? (surveyData as Survey).responses : 0, // Keep existing responses if editing, else 0
+        status: statusToSet, 
         privacy: 'Public', 
         createdBy: user.id,
-        optionCounts: surveyData.questions[0].options.reduce((acc, option) => {
-            acc[option] = 0;
-            return acc;
-        }, {} as Record<string, number>),
-        skipCount: 0,
-        createdAt: serverTimestamp(),
+        optionCounts: surveyData.id 
+          ? (surveyData as Survey).optionCounts // Keep existing counts if editing
+          : surveyData.questions[0].options.reduce((acc, option) => { // Initialize for new
+              acc[option] = 0;
+              return acc;
+            }, {} as Record<string, number>),
+        skipCount: surveyData.id ? (surveyData as Survey).skipCount : 0, // Keep existing if editing, else 0
         updatedAt: serverTimestamp(),
     };
 
     try {
-      const docRef = await addDoc(collection(db, "surveys"), newSurveyFirestoreData);
-      toast({
-        title: statusToSet === 'Active' ? "Survey Card Published!" : "Survey Card Saved as Draft!",
-        description: `Your single card survey has been ${statusToSet === 'Active' ? 'published' : 'saved'}. ID: ${docRef.id}`,
-        variant: "default"
-      });
+      let finalizedSurveyId = surveyData.id; // Use existing ID if editing
+
+      if (finalizedSurveyId) { // Editing existing draft
+        const surveyRef = doc(db, "surveys", finalizedSurveyId);
+        await updateDoc(surveyRef, surveyPayload);
+        toast({
+          title: statusToSet === 'Active' ? "Survey Card Published!" : "Draft Updated!",
+          description: `Your survey card has been ${statusToSet === 'Active' ? 'published' : 'updated'}. ID: ${finalizedSurveyId}`,
+          variant: "default"
+        });
+      } else { // Creating new survey
+        surveyPayload.createdAt = serverTimestamp(); // Set createdAt only for new surveys
+        const docRef = await addDoc(collection(db, "surveys"), surveyPayload);
+        finalizedSurveyId = docRef.id;
+        toast({
+          title: statusToSet === 'Active' ? "Survey Card Published!" : "Survey Card Saved as Draft!",
+          description: `Your single card survey has been ${statusToSet === 'Active' ? 'published' : 'saved'}. ID: ${finalizedSurveyId}`,
+          variant: "default"
+        });
+      }
+      
       setIsRedirectingAfterFinalize(true); 
       resetSurveyCreation(); 
-      router.push(user ? `/dashboard?newSurveyId=${docRef.id}` : `/`);
+      router.push(user ? `/dashboard?surveyMsgId=${finalizedSurveyId}` : `/`); // Use a generic param like surveyMsgId
     } catch (error) {
       console.error("Error finalizing survey: ", error);
       toast({
-        title: statusToSet === 'Active' ? "Publishing Failed" : "Saving Draft Failed",
+        title: statusToSet === 'Active' ? "Publishing Failed" : (surveyData.id ? "Update Failed" : "Saving Draft Failed"),
         description: "Could not finalize your survey card. Please try again.",
         variant: "destructive"
       });
@@ -110,23 +144,37 @@ export default function CreateSurveyPreviewPage() {
 
   const handleBack = () => {
     setCurrentStep(1); 
-    router.push("/survey/create/questions");
+    router.push(`/survey/create/questions${editId ? `?editId=${editId}` : ''}`);
   };
 
   if (authLoading || (!user && !authLoading) || isRedirectingAfterFinalize) {
      return <div className="text-center py-10">{isRedirectingAfterFinalize ? "Redirecting..." : (authLoading ? "Loading preview..." : "Redirecting to login...")}</div>;
   }
+
+  if (isLoadingSurveyForEdit) {
+     return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Loading survey data...</p>
+      </div>
+    );
+  }
+
    if (surveyData.questions.length === 0) { 
-    return <div className="text-center py-10">Loading question data or incomplete configuration...</div>;
+    // This might happen if directly navigating here with an invalid editId or data failed to load silently
+    return <div className="text-center py-10">Loading question data or incomplete configuration... <Button onClick={() => router.push('/dashboard')}>Go to Dashboard</Button></div>;
   }
 
   const firstQuestion = surveyData.questions[0];
+  if (!firstQuestion) {
+     return <div className="text-center py-10">Question data not available. Please go back and define a question.</div>;
+  }
   const surveyCardQuestion = mapContextQuestionToSurveyCardQuestion(firstQuestion);
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
-        <CardTitle className="text-2xl font-headline">Preview & Finalize</CardTitle>
+        <CardTitle className="text-2xl font-headline">{surveyData.id ? "Preview & Update Draft" : "Preview & Finalize"}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
 
@@ -139,7 +187,7 @@ export default function CreateSurveyPreviewPage() {
               onNext={() => { /* Preview mode, no actual submission */ }} 
               onSkip={() => { /* Preview mode, no actual submission */ }}
               isLastQuestion={true}
-              initialAnswer={undefined} // No initial answer in preview
+              initialAnswer={undefined} 
             />
           ) : (
             <p className="text-center text-destructive">No question available for preview.</p>
@@ -153,7 +201,7 @@ export default function CreateSurveyPreviewPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isFinalizing || isRedirectingAfterFinalize}>
-                {isFinalizing ? "Processing..." : "Finalize"}
+                {isFinalizing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</> : (surveyData.id ? "Update Options" : "Finalize")}
                 <ChevronDown className="ml-2 h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -162,13 +210,13 @@ export default function CreateSurveyPreviewPage() {
                 onClick={() => handleFinalizeSurvey('Active')} 
                 disabled={isFinalizing || isRedirectingAfterFinalize}
               >
-                <CheckCircle className="mr-2 h-4 w-4" /> Publish
+                <CheckCircle className="mr-2 h-4 w-4" /> {surveyData.id ? "Publish Draft" : "Publish"}
               </DropdownMenuItem>
               <DropdownMenuItem 
                 onClick={() => handleFinalizeSurvey('Draft')} 
                 disabled={isFinalizing || isRedirectingAfterFinalize}
               >
-                Save as Draft
+                {surveyData.id ? "Update Draft" : "Save as Draft"}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -1,9 +1,13 @@
+
 // @/context/SurveyCreationContext.tsx
 "use client";
 
 import type { Survey, Question } from '@/types';
 import React, { createContext, useContext, useState, ReactNode, Dispatch, SetStateAction, useCallback } from 'react';
 import * as z from "zod";
+import { db } from '@/lib/firebase';
+import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 const questionSchema = z.object({
   id: z.string().default(() => `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`), 
@@ -16,10 +20,11 @@ const questionSchema = z.object({
 export type SurveyQuestionContext = z.infer<typeof questionSchema>;
 
 export type SurveyCreationData = {
-  surveyType: "single-card"; // For now, only single-card is supported
-  title?: string; // Will be "" for single-card
-  description: string; // Optional short description for the card
-  privacy?: "public" | "invite-only"; // Will be "Public" for single-card
+  id?: string; // ID of the survey if editing
+  surveyType: "single-card"; 
+  title?: string; 
+  description: string; 
+  privacy?: "public" | "invite-only"; 
   questions: Array<SurveyQuestionContext>; 
 };
 
@@ -28,6 +33,8 @@ interface SurveyCreationContextType {
   setSurveyData: Dispatch<SetStateAction<SurveyCreationData>>;
   currentStep: number;
   setCurrentStep: Dispatch<SetStateAction<number>>;
+  isLoadingSurveyForEdit: boolean;
+  loadSurveyForEditing: (surveyId: string, currentUserId?: string) => Promise<boolean>;
   addQuestion: () => void; 
   updateQuestion: (index: number, question: SurveyQuestionContext) => void;
   removeQuestion: (index: number) => void;
@@ -38,14 +45,14 @@ const getDefaultQuestion = (): SurveyQuestionContext => ({
   id: `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
   text: "", 
   type: "multiple-choice", 
-  options: ["", ""] // Start with two empty option strings
+  options: ["", ""],
 });
 
 const defaultSurveyData: SurveyCreationData = {
   surveyType: "single-card",
-  title: "", // Not used for single-card UI, but set for data consistency
-  description: "", // Not used for single-card UI, but can be stored
-  privacy: "Public", // Single cards are always public
+  title: "", 
+  description: "", 
+  privacy: "Public", 
   questions: [getDefaultQuestion()],
 };
 
@@ -53,13 +60,64 @@ const SurveyCreationContext = createContext<SurveyCreationContextType | undefine
 
 export function SurveyCreationProvider({ children }: { children: ReactNode }) {
   const [surveyData, setSurveyData] = useState<SurveyCreationData>(defaultSurveyData);
-  const [currentStep, setCurrentStep] = useState(1); // Start at step 1 (questions page)
+  const [currentStep, setCurrentStep] = useState(1);
+  const [isLoadingSurveyForEdit, setIsLoadingSurveyForEdit] = useState(false);
+  const { toast } = useToast();
+
+  const loadSurveyForEditing = useCallback(async (surveyId: string, currentUserId?: string): Promise<boolean> => {
+    setIsLoadingSurveyForEdit(true);
+    try {
+      const surveyRef = doc(db, "surveys", surveyId);
+      const surveySnap = await getDoc(surveyRef);
+
+      if (surveySnap.exists()) {
+        const fetchedSurvey = surveySnap.data() as Survey;
+        
+        // Security check: Ensure the survey belongs to the current user and is a draft
+        if (fetchedSurvey.createdBy !== currentUserId) {
+          toast({ title: "Access Denied", description: "You do not have permission to edit this survey.", variant: "destructive" });
+          setIsLoadingSurveyForEdit(false);
+          return false;
+        }
+        if (fetchedSurvey.status !== "Draft") {
+          toast({ title: "Cannot Edit", description: "Only draft surveys can be edited.", variant: "destructive" });
+          setIsLoadingSurveyForEdit(false);
+          return false;
+        }
+
+        setSurveyData({
+          id: surveySnap.id,
+          surveyType: "single-card", // Assuming only single-card for now
+          title: fetchedSurvey.title || "",
+          description: fetchedSurvey.description || "",
+          privacy: "Public", // Single cards are public
+          questions: fetchedSurvey.questions ? fetchedSurvey.questions.map(q => ({
+            id: q.id || `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
+            text: q.text,
+            type: q.type as "multiple-choice", // Assuming only this type for now
+            options: q.options || ["", ""],
+          })) : [getDefaultQuestion()],
+        });
+        setCurrentStep(1);
+        setIsLoadingSurveyForEdit(false);
+        return true;
+      } else {
+        toast({ title: "Not Found", description: "Survey not found.", variant: "destructive" });
+        setIsLoadingSurveyForEdit(false);
+        resetSurveyCreation(); // Reset to avoid inconsistent state
+        return false;
+      }
+    } catch (error) {
+      console.error("Error loading survey for editing:", error);
+      toast({ title: "Load Failed", description: "Could not load survey for editing.", variant: "destructive" });
+      setIsLoadingSurveyForEdit(false);
+      resetSurveyCreation();
+      return false;
+    }
+  }, [toast]);
 
   const addQuestion = useCallback(() => {
     setSurveyData(prev => {
-        // For single-card, we should only allow one question.
-        // This logic might need adjustment if we re-introduce "card-deck".
-        // For now, this will prevent adding more than one question if it's single-card.
         if (prev.surveyType === "single-card" && prev.questions.length >= 1) {
             console.warn("Cannot add more than one question to a single-card survey.");
             return prev;
@@ -80,12 +138,11 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
 
   const removeQuestion = useCallback((index: number) => {
     setSurveyData(prev => {
-        // For single-card, we should not allow removing the only question.
         if (prev.surveyType === "single-card") {
             console.warn("Cannot remove the question from a single-card survey. Edit it instead.");
             return prev;
         }
-        if (prev.questions.length <= 1) { // For card-decks, ensure at least one question remains
+        if (prev.questions.length <= 1) { 
             console.warn("Survey must have at least one question.");
             return prev;
         }
@@ -98,13 +155,15 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
   
   const resetSurveyCreation = useCallback(() => {
     setSurveyData({
+        id: undefined, // Clear ID
         surveyType: "single-card",
         title: "",
         description: "",
         privacy: "Public",
         questions: [getDefaultQuestion()],
     });
-    setCurrentStep(1); // Reset to the first step (questions page)
+    setCurrentStep(1); 
+    setIsLoadingSurveyForEdit(false);
   }, []);
 
   return (
@@ -113,6 +172,8 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
         setSurveyData, 
         currentStep, 
         setCurrentStep,
+        isLoadingSurveyForEdit,
+        loadSurveyForEditing,
         addQuestion,
         updateQuestion,
         removeQuestion,
