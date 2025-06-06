@@ -4,21 +4,20 @@
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-// Removed RadioGroup, RadioGroupItem imports
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect } from "react";
 import type { Question } from "@/types";
-import { ChevronRight, SkipForward, CheckCircle2 } from "lucide-react";
+import { SkipForward, CheckCircle2 } from "lucide-react"; // Removed ChevronRight
 import { cn } from "@/lib/utils";
 
 interface SurveyCardProps {
   question: Question;
   questionNumber: number;
   totalQuestions: number;
-  onNext: (answer?: any) => void;
+  onNext: (answer?: any) => void; // This will now be called on option selection
   onSkip: () => void;
-  isLastQuestion: boolean;
+  isLastQuestion: boolean; // This might be less relevant for the button label now
   initialAnswer?: string | undefined | null;
 }
 
@@ -28,56 +27,67 @@ export default function SurveyCard({
   totalQuestions,
   onNext,
   onSkip,
-  isLastQuestion,
+  isLastQuestion, // Kept for potential future use, but main submit button is gone
   initialAnswer,
 }: SurveyCardProps) {
   const [selectedValue, setSelectedValue] = useState<string | undefined>(undefined);
   const [textAnswer, setTextAnswer] = useState<string>("");
 
   useEffect(() => {
-    setSelectedValue(undefined);
-    setTextAnswer("");
-
+    // Reset internal state when the question or initialAnswer changes
     if (question.type === "multiple-choice" || question.type === "rating") {
-      setSelectedValue(initialAnswer || undefined);
+      setSelectedValue(initialAnswer === null ? undefined : initialAnswer);
     } else if (question.type === "text") {
-      setTextAnswer(initialAnswer || "");
-    }
-    if (initialAnswer === null) {
-        setSelectedValue(undefined);
-        setTextAnswer("");
+      setTextAnswer(initialAnswer === null ? "" : initialAnswer || "");
     }
   }, [initialAnswer, question.id, question.type]);
 
-  const handleSubmitAnswer = () => {
-    let answer;
+  const handleOptionClick = (option: string) => {
+    let newSelectedValue: string | undefined;
     if (question.type === "multiple-choice" || question.type === "rating") {
-      answer = selectedValue;
-    } else if (question.type === "text") {
-      answer = textAnswer.trim() === "" ? undefined : textAnswer;
+      if (selectedValue === option) {
+        newSelectedValue = undefined; // Deselect
+      } else {
+        newSelectedValue = option; // Select
+      }
+      setSelectedValue(newSelectedValue);
+      onNext(newSelectedValue); // Trigger onNext immediately
     }
-    onNext(answer);
   };
+  
+  const handleTextAnswerChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setTextAnswer(e.target.value);
+    // For text answers, onNext could be triggered on blur or via a separate small "submit text" button if desired.
+    // For now, let's assume text answers still use a conceptual "next" step from HomePage after stats are shown.
+    // Or, if stats are shown immediately for text too, HomePage needs to decide when.
+    // Let's keep text simple: onNext will be called by HomePage when user clicks "Next Card" from stats view.
+    // OR, if we want immediate stats for text too after typing, this needs more thought.
+    // For this change, focusing on multiple-choice triggering stats immediately.
+  };
+
+  const handleTextSubmitForStats = () => {
+    // This function would only be relevant if text questions also immediately showed stats
+    // and had their own small submit button within the SurveyCard.
+    // For now, text questions will show stats when HomePage initiates it after a main "Next Card" click.
+    // This behavior is mostly for multiple-choice/rating.
+    if (question.type === 'text') {
+        onNext(textAnswer.trim() === "" ? undefined : textAnswer);
+    }
+  }
 
   const handleSkipClick = () => {
     onSkip();
   }
 
-  const isAnswerSelectedOrEntered = () => {
-    if (question.type === "multiple-choice" || question.type === "rating") {
-      return !!selectedValue;
-    } else if (question.type === "text") {
-      return textAnswer.trim() !== "";
-    }
-    return false;
-  };
-
-  const canSubmit = isAnswerSelectedOrEntered();
-
   return (
     <Card className="w-full shadow-xl animate-in fade-in-50 duration-500">
       <CardHeader>
         <CardTitle className="text-xl font-headline text-primary">{question.text}</CardTitle>
+        {/* Optional: Question X of Y can go here if still relevant for multi-question surveys
+        <CardDescription>
+          Question {questionNumber} of {totalQuestions}
+        </CardDescription> 
+        */}
       </CardHeader>
       <CardContent className="min-h-[150px]">
         {question.type === "multiple-choice" ? (
@@ -87,30 +97,20 @@ export default function SurveyCard({
               return (
                 <div
                   key={index}
-                  onClick={() => {
-                    if (isSelected) {
-                      setSelectedValue(undefined); // Deselect if already selected
-                    } else {
-                      setSelectedValue(option);    // Select otherwise
-                    }
-                  }}
+                  onClick={() => handleOptionClick(option)}
                   className={cn(
                     "flex items-center space-x-3 p-3 border rounded-md cursor-pointer transition-all duration-150 ease-in-out",
                     isSelected
                       ? "bg-primary text-primary-foreground border-primary-foreground/30 shadow-lg ring-2 ring-primary-foreground/20"
                       : "bg-card hover:bg-muted/40 border-border"
                   )}
-                  role="radio"
+                  role="radio" // Still acting like a radio group conceptually
                   aria-checked={isSelected}
-                  tabIndex={0} // Make it focusable
+                  tabIndex={0} 
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                       if (isSelected) {
-                        setSelectedValue(undefined);
-                      } else {
-                        setSelectedValue(option);
-                      }
+                      handleOptionClick(option);
                     }
                   }}
                 >
@@ -130,29 +130,21 @@ export default function SurveyCard({
           <Textarea
             placeholder="Type your answer here..."
             value={textAnswer}
-            onChange={(e) => setTextAnswer(e.target.value)}
+            onChange={handleTextAnswerChange}
+            // onBlur={handleTextSubmitForStats} // Option: submit text on blur to show stats
             rows={4}
           />
         ) : question.type === "rating" ? (
-          // Rating can keep using RadioGroup for now, or be styled similarly if needed
-          // For consistency, we might want to update rating style later.
-          // For now, focusing on multiple-choice as per request.
           <div className="flex space-x-2 justify-center">
-             {/* Using simple buttons for rating for now, can be styled more like stars or custom inputs later */}
             {[1, 2, 3, 4, 5].map((ratingValue) => {
-              const isSelected = String(ratingValue) === selectedValue;
+              const ratingString = String(ratingValue);
+              const isSelected = ratingString === selectedValue;
               return (
                 <Button
                   key={ratingValue}
                   variant={isSelected ? "default" : "outline"}
                   className={cn("h-10 w-10 p-0 rounded-full", isSelected && "bg-primary text-primary-foreground" )}
-                  onClick={() => {
-                    if (isSelected) {
-                      setSelectedValue(undefined);
-                    } else {
-                      setSelectedValue(String(ratingValue));
-                    }
-                  }}
+                  onClick={() => handleOptionClick(ratingString)}
                   aria-pressed={isSelected}
                 >
                   {ratingValue}
@@ -162,16 +154,10 @@ export default function SurveyCard({
           </div>
         ) : <p>Unsupported question type.</p>}
       </CardContent>
-      <CardFooter className="flex justify-between">
+      <CardFooter className="flex justify-end"> 
+        {/* "Vote & See Results" button removed. Skip is the only primary action here from SurveyCard's perspective now. */}
         <Button variant="outline" onClick={handleSkipClick}>
           <SkipForward className="mr-2 h-4 w-4" /> Skip
-        </Button>
-        <Button 
-          onClick={handleSubmitAnswer} 
-          className="bg-accent hover:bg-accent/90 text-accent-foreground"
-          disabled={!canSubmit}
-        >
-          {isLastQuestion ? "Finish" : "Next"} <ChevronRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>
     </Card>
