@@ -320,8 +320,8 @@ export default function HomePage() {
     const totalInteractions = totalResponses + totalSkips;
 
     return (
-      <div className="flex flex-col items-center justify-center flex-grow py-6 md:py-10 px-4">
-        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-4 sm:mb-6 mx-auto">
+      <div className="flex flex-col items-center justify-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
+        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>
             <TabsTrigger value="responded">Answered</TabsTrigger>
@@ -329,7 +329,7 @@ export default function HomePage() {
           </TabsList>
         </Tabs>
         {/* Placeholder for Topic/Sort filters - NOT shown on stats view */}
-        <Card className="w-full max-w-xs sm:max-w-sm shadow-xl">
+        <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
           <CardHeader>
             <CardTitle className="text-xl font-headline text-primary">"{questionText}" - Results</CardTitle>
             <CardDescription>Total Interactions: {totalInteractions}</CardDescription>
@@ -392,8 +392,8 @@ export default function HomePage() {
     }
     
     return (
-      <div className="flex flex-col items-center justify-center text-center flex-grow py-6 md:py-10 px-4">
-         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-4 sm:mb-6 mx-auto">
+      <div className="flex flex-col items-center justify-center text-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
+         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>
             <TabsTrigger value="responded">Answered</TabsTrigger>
@@ -401,7 +401,7 @@ export default function HomePage() {
           </TabsList>
         </Tabs>
 
-        <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 my-4">
+        <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 mt-2 mb-3">
           <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
             <Filter className="mr-2 h-4 w-4" /> Topics: All
           </Button>
@@ -410,7 +410,7 @@ export default function HomePage() {
           </Button>
         </div>
 
-        <Card className="p-6 md:p-10 shadow-xl w-full max-w-md mt-4">
+        <Card className="p-6 md:p-10 shadow-xl w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-2xl font-headline text-primary">
               {emptyStateTitle}
@@ -437,15 +437,15 @@ export default function HomePage() {
 
   if (!currentSurvey || !currentQuestion) { 
     return (
-      <div className="flex flex-col items-center justify-center text-center flex-grow py-6 md:py-10 px-4">
-        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-4 sm:mb-6 mx-auto">
+      <div className="flex flex-col items-center justify-center text-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
+        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>
             <TabsTrigger value="responded">Answered</TabsTrigger>
             <TabsTrigger value="skipped">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 my-4">
+        <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 mt-2 mb-3">
           <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
             <Filter className="mr-2 h-4 w-4" /> Topics: All
           </Button>
@@ -453,14 +453,14 @@ export default function HomePage() {
             <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
           </Button>
         </div>
-        <p className="text-muted-foreground mt-4">Preparing card...</p>
+        <p className="text-muted-foreground">Preparing card...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center flex-grow py-6 md:py-10 px-4">
-      <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-4 sm:mb-6 mx-auto">
+    <div className="flex flex-col items-center justify-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
+      <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="not-responded">New</TabsTrigger>
           <TabsTrigger value="responded">Answered</TabsTrigger>
@@ -468,7 +468,7 @@ export default function HomePage() {
         </TabsList>
       </Tabs>
 
-      <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 my-4">
+      <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 mt-2 mb-3">
         <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
           <Filter className="mr-2 h-4 w-4" /> Topics: All
         </Button>
