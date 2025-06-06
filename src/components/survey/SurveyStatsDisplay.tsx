@@ -65,13 +65,13 @@ export default function SurveyStatsDisplay({ survey, answers }: SurveyStatsDispl
           </CardHeader>
           <CardContent>
             {question.type === 'multiple-choice' || question.type === 'rating' ? (
-              (survey.optionCounts && Object.keys(survey.optionCounts).length > 0) || (question.type === 'rating' && survey.responses > 0) ? (
+              (survey.optionCounts && Object.keys(survey.optionCounts).length > 0) || (question.type === 'rating' && (survey.responses || 0) > 0) ? (
                 <div className="h-[350px] w-full"> {/* Increased height for better legend visibility */}
                    <ChartContainer 
                     config={{
                       responses: { label: "Responses", color: "hsl(var(--chart-1))" },
                       ...(question.options?.reduce((acc, option, idx) => {
-                        acc[option] = { label: option, color: `hsl(var(--chart-${(idx % 5) + 1}))` };
+                        acc[option] = { label: option, color: `hsl(var(--chart-${((idx % 5) + 1)}))` };
                         return acc;
                       }, {} as any))
                     }}
@@ -80,7 +80,7 @@ export default function SurveyStatsDisplay({ survey, answers }: SurveyStatsDispl
                     {question.type === 'multiple-choice' ? (
                       <RechartsPieChart>
                         <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                        <RechartsPie
+                        <Pie
                           data={getChartDataForQuestion(question, answers)}
                           cx="50%"
                           cy="50%"
@@ -93,7 +93,7 @@ export default function SurveyStatsDisplay({ survey, answers }: SurveyStatsDispl
                           {getChartDataForQuestion(question, answers).map((entry, idx) => (
                             <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} name={entry.name} />
                           ))}
-                        </RechartsPie>
+                        </Pie>
                          <ChartLegend content={<ChartLegendContent nameKey="name" />} />
                       </RechartsPieChart>
                     ) : ( // Rating questions as Bar chart
