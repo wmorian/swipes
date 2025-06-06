@@ -124,72 +124,63 @@ export default function CreateSurveyQuestionsPage() {
   const qIndex = 0;
 
   return (
-    <Card className="w-full max-w-3xl mx-auto shadow-xl">
-      <CardHeader>
-        <CardTitle className="text-2xl font-headline">Create New Survey Card - Step 1 of 2</CardTitle>
-        <CardDescription>
-            Define your single question. All questions are multiple-choice with up to 5 options.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-8">
-          <Card key={question.id || qIndex} className="p-4 space-y-4 shadow-md w-full max-w-xs sm:max-w-sm mx-auto">
-            <div className="flex justify-between items-center">
-              <Label htmlFor={`qtext-${qIndex}`} className="text-lg font-semibold text-primary">
-                Your Question
-              </Label>
-            </div>
-            <Textarea
-              id={`qtext-${qIndex}`}
-              placeholder="Enter your question text here..."
-              value={question.text}
-              onChange={(e) => handleQuestionTextChange(qIndex, e.target.value)}
-              rows={3}
-              className="text-base"
-            />
-            
-            <div className="space-y-3">
-              <Label className="text-md font-medium">Options</Label>
-              {question.options.map((option, optIndex) => (
-                <div key={optIndex} className="flex items-center gap-2">
-                  <Input
-                    type="text"
-                    placeholder={`Option ${optIndex + 1}`}
-                    value={option}
-                    onChange={(e) => handleOptionChange(qIndex, optIndex, e.target.value)}
-                    className="text-sm"
-                  />
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => handleRemoveOption(qIndex, optIndex)}
-                    disabled={question.options.length <= 1}
-                    aria-label="Remove option"
-                  >
-                    <XCircle className="h-5 w-5 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleAddOption(qIndex)}
-                disabled={question.options.length >= 5}
-                className="mt-2 w-full" 
-              >
-                <PlusCircle className="mr-2 h-4 w-4 text-accent" /> Add Option
-              </Button>
-            </div>
-          </Card>
-      </CardContent>
-      <CardFooter className="flex justify-between mt-8 pt-6 border-t">
-          <Button variant="outline" onClick={handleBack}>
-            <ArrowLeft className="mr-2 h-4 w-4 md:mr-2" /> <span className="hidden md:inline">Dashboard</span><span className="md:hidden">Back</span>
+    <Card key={question.id || qIndex} className="p-4 space-y-4 shadow-xl w-full max-w-3xl sm:max-w-sm mx-auto">
+    <div className="flex justify-between items-center">
+      <Label htmlFor={`qtext-${qIndex}`} className="text-lg font-semibold text-primary">
+        Your Question
+      </Label>
+    </div>
+    <Textarea
+      id={`qtext-${qIndex}`}
+      placeholder="Enter your question text here..."
+      value={question.text}
+      onChange={(e) => handleQuestionTextChange(qIndex, e.target.value)}
+      rows={3}
+      className="text-base"
+    />
+    
+    <div className="space-y-3">
+      <Label className="text-md font-medium">Options</Label>
+      {question.options.map((option, optIndex) => (
+        <div key={optIndex} className="flex items-center gap-2">
+          <Input
+            type="text"
+            placeholder={`Option ${optIndex + 1}`}
+            value={option}
+            onChange={(e) => handleOptionChange(qIndex, optIndex, e.target.value)}
+            className="text-sm"
+          />
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => handleRemoveOption(qIndex, optIndex)}
+            disabled={question.options.length <= 1}
+            aria-label="Remove option"
+          >
+            <XCircle className="h-5 w-5 text-destructive" />
           </Button>
-          <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            <span className="hidden md:inline">Preview</span><span className="md:hidden">Next</span> <ArrowRight className="ml-2 h-4 w-4 md:ml-2" />
-          </Button>
-      </CardFooter>
-    </Card>
+        </div>
+      ))}
+      <Button 
+        variant="outline" 
+        size="sm"
+        onClick={() => handleAddOption(qIndex)}
+        disabled={question.options.length >= 5}
+        className="mt-2 w-full" 
+      >
+        <PlusCircle className="mr-2 h-4 w-4 text-accent" /> Add Option
+      </Button>
+    </div>
+    <CardFooter className="flex justify-between mt-8 pt-6 border-t">
+           <Button variant="outline" onClick={handleBack}>
+             <ArrowLeft className="mr-2 h-4 w-4 md:mr-2" /> <span className="hidden md:inline">Dashboard</span><span className="md:hidden">Back</span>
+           </Button>
+           <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+             <span className="hidden md:inline">Preview</span><span className="md:hidden">Next</span> <ArrowRight className="ml-2 h-4 w-4 md:ml-2" />
+           </Button>
+     </CardFooter>
+  </Card>
+
   );
 }
 

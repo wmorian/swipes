@@ -122,18 +122,9 @@ export default function CreateSurveyPreviewPage() {
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
-        <CardTitle className="text-2xl font-headline">Create New Survey Card - Step 2 of 2: Preview & Publish</CardTitle>
-        <CardDescription>
-            Review your single public card. If it looks good, publish it!
-        </CardDescription>
+        <CardTitle className="text-2xl font-headline">Preview & Publish</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="text-center mb-4 p-4 border rounded-lg bg-muted/50">
-            <h3 className="text-xl font-semibold text-primary">{"Single Public Card Preview"}</h3>
-            {surveyData.description && <p className="text-sm text-muted-foreground mt-1">{surveyData.description}</p>}
-             <p className="text-xs text-muted-foreground mt-1">Type: Single Card (Public)</p>
-             <p className="text-xs text-muted-foreground mt-1">Questions: 1</p>
-        </div>
 
         <div className="w-full max-w-xs sm:max-w-sm mx-auto bg-muted p-4 rounded-lg shadow-inner">
           {surveyCardQuestion ? (
@@ -152,10 +143,10 @@ export default function CreateSurveyPreviewPage() {
       </CardContent>
       <CardFooter className="flex justify-between items-center mt-8 pt-6 border-t">
           <Button variant="outline" onClick={handleBack} disabled={isPublishing}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Question
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
           <Button onClick={handlePublish} className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isPublishing || isRedirectingAfterPublish}>
-            {isPublishing || isRedirectingAfterPublish ? "Publishing..." : <><CheckCircle className="mr-2 h-4 w-4" /> Publish Card</>}
+            {isPublishing || isRedirectingAfterPublish ? "Publishing..." : <><CheckCircle className="mr-2 h-4 w-4" /> Publish</>}
           </Button>
         </CardFooter>
     </Card>
