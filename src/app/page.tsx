@@ -204,6 +204,10 @@ export default function HomePage() {
           if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
           }
+           // Ensure responses count is not decremented if it's just an answer change
+          if (!finalSurveyUpdates.responses) { // Only increment if not already touched
+             // This case might mean no change in total response count if just changing answer
+          }
           actualSurveyStatChangesMade = true; 
         }
       }
@@ -236,7 +240,6 @@ export default function HomePage() {
       
       setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocId! }}));
       
-      // Always fetch updated survey if it's an answer or if backend stats were definitely changed
       if (interactionType === 'answer' || actualSurveyStatChangesMade) {
         const updatedSurveyDoc = await getDoc(surveyRef);
         if (updatedSurveyDoc.exists()) {
@@ -246,7 +249,6 @@ export default function HomePage() {
               createdAt: (data.createdAt as Timestamp)?.toDate(),
               updatedAt: (data.updatedAt as Timestamp)?.toDate(),
             } as Survey;
-            // Update the card in publicCards list for consistency if other parts of UI rely on it.
             setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedSurveyForStats : card));
         }
       }
@@ -257,7 +259,6 @@ export default function HomePage() {
     }
   };
 
-  // Called when an option is selected/deselected in SurveyCard
   const handleCardAnswerSubmission = async (submittedAnswer?: any) => {
     if (displayedCards.length === 0 || !displayedCards[currentCardIndex]) return;
     const currentSurvey = displayedCards[currentCardIndex];
@@ -268,35 +269,38 @@ export default function HomePage() {
       return;
     }
 
-    if (submittedAnswer === undefined) { // Option deselected
+    if (submittedAnswer === undefined) {
         setStatsForCard(null); 
         setUserInitialSelection(undefined);
-        // If an answer was previously recorded and now deselected,
-        // we might need to update backend to reflect "not answered" or a "skip".
-        // For now, just clearing stats view. This behavior can be revisited if needed.
-        // To fully revert a vote, processCardInteraction would need a specific mode.
         return;
     }
 
-    // If an answer is submitted (not undefined)
     const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'answer', submittedAnswer);
     setStatsForCard(updatedSurveyForStats); 
-    setUserInitialSelection(submittedAnswer); // Set user's current choice for highlighting in stats
+    setUserInitialSelection(submittedAnswer);
   };
 
   const handleCardSkip = async () => {
     if (displayedCards.length === 0 || !displayedCards[currentCardIndex]) return;
-    const currentSurvey = displayedCards[currentCardIndex];
-    const currentQuestion = currentSurvey.questions?.[0];
-
-    if (!currentQuestion) {
-      proceedToNextCard(); 
-      return;
-    }
+    
     setStatsForCard(null); 
     setUserInitialSelection(undefined);
-    await processCardInteraction(currentSurvey, currentQuestion, 'skip');
-    proceedToNextCard(); 
+
+    if (selectedFilter === 'responded') {
+      // If viewing 'Answered' cards, 'Skip' just moves to the next card in this filter
+      // without changing the card's answer status.
+      proceedToNextCard();
+    } else {
+      // For 'New' or 'Skipped' filters, 'Skip' processes the skip interaction.
+      const currentSurvey = displayedCards[currentCardIndex];
+      const currentQuestion = currentSurvey.questions?.[0];
+      if (!currentQuestion) {
+        proceedToNextCard(); 
+        return;
+      }
+      await processCardInteraction(currentSurvey, currentQuestion, 'skip');
+      proceedToNextCard(); 
+    }
   };
 
   const proceedToNextCard = () => {
@@ -310,7 +314,6 @@ export default function HomePage() {
   };
   
   const resetCardView = () => {
-    // This will re-fetch all data and reset filters to default, effectively restarting the card flow.
     fetchSurveyData(); 
   };
 
@@ -323,16 +326,14 @@ export default function HomePage() {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading authentication...</p></div>;
   }
   if (!user && !authLoading) {
-    // This should ideally be handled by useEffect redirect, but as a fallback message.
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
-  if (isLoading && user) { // Show loading only if user is confirmed and initial data is loading
+  if (isLoading && user) {
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
-  // STATS VIEW LOGIC
   if (statsForCard) {
-    const cardToDisplayStats = statsForCard; // This is the survey object with latest counts
+    const cardToDisplayStats = statsForCard;
     const questionText = cardToDisplayStats.questions?.[0]?.text || "Survey Question";
     const totalResponses = cardToDisplayStats.responses || 0;
     const totalSkips = cardToDisplayStats.skipCount || 0;
@@ -388,22 +389,21 @@ export default function HomePage() {
     );
   }
 
-  // EMPTY/ALL VIEWED STATE LOGIC
   let emptyStateTitle = "You've Seen All Cards!";
   let emptyStateDescription = "Thanks for participating! Check back later for new cards or try another filter.";
-  let showViewAgainCta = true; // Default to true if there are cards in this filter.
+  let showViewAgainCta = true;
   
   const showEmptyOrAllViewedState = !isLoading && user && (
-    (displayedCards.length === 0) || // No cards match the current filter
-    (currentCardIndex >= displayedCards.length && displayedCards.length > 0) // All cards in current filter have been passed
+    (displayedCards.length === 0) || 
+    (currentCardIndex >= displayedCards.length && displayedCards.length > 0) 
   );
 
   if (showEmptyOrAllViewedState) {
-    if (publicCards.length === 0) { // No public cards in the system at all
+    if (publicCards.length === 0) {
         emptyStateTitle = "No Public Cards Yet!";
         emptyStateDescription = "Check back later for engaging public survey cards, or create your own.";
-        showViewAgainCta = false; // No cards to view again
-    } else if (displayedCards.length === 0 && publicCards.length > 0) { // Cards exist, but not for this filter
+        showViewAgainCta = false;
+    } else if (displayedCards.length === 0 && publicCards.length > 0) {
         if (selectedFilter === 'not-responded') {
           emptyStateTitle = "All New Cards Viewed!";
           emptyStateDescription = "You've seen all the brand new cards. Try another filter or check back later!";
@@ -414,11 +414,11 @@ export default function HomePage() {
           emptyStateTitle = "No Skipped Cards Yet";
           emptyStateDescription = "You haven't skipped any cards. Skipped cards will appear here.";
         }
-        showViewAgainCta = false; // "View Again" doesn't make sense if filter is empty
-    } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) { // All cards in this specific filter have been viewed
+        showViewAgainCta = false;
+    } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) {
         emptyStateTitle = `All ${selectedFilter === 'responded' ? 'Answered' : selectedFilter === 'skipped' ? 'Skipped' : 'New'} Cards Viewed!`;
         emptyStateDescription = "You've gone through all available cards for this filter.";
-        showViewAgainCta = true; // User can choose to view this filter's cards again
+        showViewAgainCta = true;
     }
     
     return (
@@ -450,7 +450,7 @@ export default function HomePage() {
             <CardDescription className="text-md mb-6">
               {emptyStateDescription}
             </CardDescription>
-            {showViewAgainCta && ( // Only show if there were cards in this filter to begin with
+            {showViewAgainCta && (
                  <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
                     <RefreshCw className="mr-2 h-4 w-4" /> View Cards Again
                 </Button>
@@ -461,17 +461,13 @@ export default function HomePage() {
     );
   }
 
-  // QUESTION VIEW LOGIC (when statsForCard is null)
   const currentSurvey = displayedCards[currentCardIndex];
   const currentQuestion = currentSurvey?.questions?.[0]; 
-  // For initialAnswer prop of SurveyCard, find if this user has an existing non-skipped answer for this card
   const currentUserInitialAnswerForCard = userCardInteractions[currentSurvey?.id]?.isSkipped 
-                                          ? null // If skipped, effectively no initial answer shown as selected
+                                          ? null 
                                           : userCardInteractions[currentSurvey?.id]?.answerValue;
 
   if (!currentSurvey || !currentQuestion) { 
-    // This might show briefly if displayedCards is being populated or if currentCardIndex is out of bounds unexpectedly.
-    // Or if there are no displayed cards for some reason not caught by the empty state logic.
     return (
       <div className="flex flex-col items-center justify-center text-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
@@ -521,12 +517,12 @@ export default function HomePage() {
         )}
         <SurveyCard
           question={currentQuestion}
-          questionNumber={currentCardIndex + 1} // This might be more conceptual now (e.g. "Card X of Y in current filter")
-          totalQuestions={displayedCards.length} // Total in current filter
-          onNext={handleCardAnswerSubmission} // Called when an option is selected/deselected
+          questionNumber={currentCardIndex + 1} 
+          totalQuestions={displayedCards.length}
+          onNext={handleCardAnswerSubmission} 
           onSkip={handleCardSkip}         
-          isLastQuestion={currentCardIndex === displayedCards.length - 1} // Less relevant for button label now
-          initialAnswer={currentUserInitialAnswerForCard} // Pass existing answer for this card if any
+          isLastQuestion={currentCardIndex === displayedCards.length - 1}
+          initialAnswer={currentUserInitialAnswerForCard} 
         />
       </div>
     </div>
