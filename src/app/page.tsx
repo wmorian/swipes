@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw } from 'lucide-react';
+import { ArrowRight, RefreshCw, Filter, ArrowUpDown } from 'lucide-react';
 import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
 import { 
   collection, 
@@ -35,7 +35,6 @@ export default function HomePage() {
   const [publicCards, setPublicCards] = useState<Survey[]>([]);
   const [displayedCards, setDisplayedCards] = useState<Survey[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  // const [allCardsViewed, setAllCardsViewed] = useState(false); // Replaced by direct logic
   const [isLoading, setIsLoading] = useState(true); 
   const [statsForCard, setStatsForCard] = useState<Survey | null>(null);
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
@@ -48,8 +47,7 @@ export default function HomePage() {
       return;
     }
     setIsLoading(true);
-    // setAllCardsViewed(false); // Not needed
-    setCurrentCardIndex(0); // Reset index on full data fetch
+    setCurrentCardIndex(0); 
     setStatsForCard(null);
 
     try {
@@ -141,10 +139,8 @@ export default function HomePage() {
     setDisplayedCards(newFilteredCards);
 
     if (prevSelectedFilterRef.current !== selectedFilter) {
-      setCurrentCardIndex(0); // Reset index ONLY if filter string changed
+      setCurrentCardIndex(0); 
     }
-    // If only userCardInteractions changed, currentCardIndex (potentially advanced by proceedToNextCard) is preserved.
-
     prevSelectedFilterRef.current = selectedFilter;
 
   }, [publicCards, userCardInteractions, selectedFilter, authLoading, isLoading, user]);
@@ -293,7 +289,7 @@ export default function HomePage() {
     if (currentCardIndex < displayedCards.length - 1) {
       setCurrentCardIndex(prevIndex => prevIndex + 1);
     } else {
-      setCurrentCardIndex(displayedCards.length); // Go past the end to trigger all viewed state
+      setCurrentCardIndex(displayedCards.length); 
     }
   };
   
@@ -332,6 +328,7 @@ export default function HomePage() {
             <TabsTrigger value="skipped">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
+        {/* Placeholder for Topic/Sort filters - NOT shown on stats view */}
         <Card className="w-full max-w-xs sm:max-w-sm shadow-xl">
           <CardHeader>
             <CardTitle className="text-xl font-headline text-primary">"{questionText}" - Results</CardTitle>
@@ -366,18 +363,17 @@ export default function HomePage() {
   let emptyStateDescription = "Thanks for participating! Check back later for new cards or try another filter.";
   let showViewAgainCta = true; 
   
-  // Determine if we should show the "empty state" or "all viewed" card
   const showEmptyOrAllViewedState = !isLoading && user && (
     (displayedCards.length === 0) || 
     (currentCardIndex >= displayedCards.length && displayedCards.length > 0)
   );
 
   if (showEmptyOrAllViewedState) {
-    if (publicCards.length === 0) { // No cards in the system at all
+    if (publicCards.length === 0) { 
         emptyStateTitle = "No Public Cards Yet!";
         emptyStateDescription = "Check back later for engaging public survey cards, or create your own.";
         showViewAgainCta = false;
-    } else if (displayedCards.length === 0 && publicCards.length > 0) { // Cards exist, but none for this filter
+    } else if (displayedCards.length === 0 && publicCards.length > 0) { 
         if (selectedFilter === 'not-responded') {
           emptyStateTitle = "All New Cards Viewed!";
           emptyStateDescription = "You've seen all the brand new cards. Try another filter or check back later!";
@@ -389,22 +385,32 @@ export default function HomePage() {
           emptyStateDescription = "You haven't skipped any cards. Skipped cards will appear here.";
         }
         showViewAgainCta = false; 
-    } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) { // All cards in current filter viewed
+    } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) { 
         emptyStateTitle = `All ${selectedFilter === 'responded' ? 'Answered' : selectedFilter === 'skipped' ? 'Skipped' : 'New'} Cards Viewed!`;
         emptyStateDescription = "You've gone through all available cards for this filter.";
-        showViewAgainCta = true; // Allow reset if there were cards in this filter
+        showViewAgainCta = true; 
     }
     
     return (
-      <div className="flex flex-col items-center justify-center text-center min-h-[calc(100vh-10rem)] space-y-6 px-4">
-         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-0 -mt-8 sm:mb-6 mx-auto">
+      <div className="flex flex-col items-center justify-center text-center flex-grow py-6 md:py-10 px-4">
+         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-4 sm:mb-6 mx-auto">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>
             <TabsTrigger value="responded">Answered</TabsTrigger>
             <TabsTrigger value="skipped">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
-        <Card className="p-6 md:p-10 shadow-xl w-full max-w-md">
+
+        <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 my-4">
+          <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
+            <Filter className="mr-2 h-4 w-4" /> Topics: All
+          </Button>
+          <Button variant="outline" className="flex-grow" onClick={() => console.log('Sort clicked - coming soon!')}>
+            <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
+          </Button>
+        </div>
+
+        <Card className="p-6 md:p-10 shadow-xl w-full max-w-md mt-4">
           <CardHeader>
             <CardTitle className="text-2xl font-headline text-primary">
               {emptyStateTitle}
@@ -414,7 +420,7 @@ export default function HomePage() {
             <CardDescription className="text-md mb-6">
               {emptyStateDescription}
             </CardDescription>
-            {showViewAgainCta && ( // Only show "View Again" if there were cards to view again for this filter
+            {showViewAgainCta && ( 
                  <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
                     <RefreshCw className="mr-2 h-4 w-4" /> View Cards Again
                 </Button>
@@ -430,10 +436,8 @@ export default function HomePage() {
   const currentUserInitialAnswer = userCardInteractions[currentSurvey?.id]?.isSkipped ? null : userCardInteractions[currentSurvey?.id]?.answerValue;
 
   if (!currentSurvey || !currentQuestion) { 
-    // This state might occur briefly if displayedCards updates and currentCardIndex is temporarily out of sync
-    // or if data is malformed.
     return (
-      <div className="text-center py-10 text-muted-foreground">
+      <div className="flex flex-col items-center justify-center text-center flex-grow py-6 md:py-10 px-4">
         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-4 sm:mb-6 mx-auto">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>
@@ -441,7 +445,15 @@ export default function HomePage() {
             <TabsTrigger value="skipped">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
-        Preparing card...
+        <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 my-4">
+          <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
+            <Filter className="mr-2 h-4 w-4" /> Topics: All
+          </Button>
+          <Button variant="outline" className="flex-grow" onClick={() => console.log('Sort clicked - coming soon!')}>
+            <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
+          </Button>
+        </div>
+        <p className="text-muted-foreground mt-4">Preparing card...</p>
       </div>
     );
   }
@@ -455,6 +467,16 @@ export default function HomePage() {
           <TabsTrigger value="skipped">Skipped</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 my-4">
+        <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
+          <Filter className="mr-2 h-4 w-4" /> Topics: All
+        </Button>
+        <Button variant="outline" className="flex-grow" onClick={() => console.log('Sort clicked - coming soon!')}>
+          <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
+        </Button>
+      </div>
+
       <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6">
         {currentSurvey.description && (
           <div className="text-center">
