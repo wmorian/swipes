@@ -44,7 +44,7 @@ export default function GlobalFab() {
   }
 
   return (
-    <div className="fixed bottom-[5.5rem] right-6 md:bottom-8 md:right-8 z-50 flex flex-col items-center">
+    <div className="fixed bottom-[5rem] right-6 md:bottom-8 md:right-8 z-50 flex flex-col items-center">
       {/* Sub-action buttons container */}
       <div 
         className={`flex flex-col items-center space-y-2 mb-3 transition-all duration-300 ease-in-out ${

@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw, Filter, ArrowUpDown } from 'lucide-react';
+import { ArrowRight, RefreshCw, Filter, ArrowUpDown, SlidersHorizontal } from 'lucide-react';
 import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
 import { 
   collection, 
@@ -41,6 +41,7 @@ export default function HomePage() {
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('not-responded');
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
+  const [filterSortControlsVisible, setFilterSortControlsVisible] = useState(false);
 
   const fetchSurveyData = async () => {
     if (!user) { 
@@ -189,7 +190,7 @@ export default function HomePage() {
           }
           actualSurveyStatChangesMade = true;
         }
-      } else { 
+      } else { // Was previously answered
         if (isCurrentlySkipped) { 
           finalSurveyUpdates.responses = increment(-1); 
           if (previousAnswerValue && typeof previousAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
@@ -197,17 +198,14 @@ export default function HomePage() {
           }
           finalSurveyUpdates.skipCount = increment(1);
           actualSurveyStatChangesMade = true;
-        } else if (currentAnswerValue !== previousAnswerValue) { 
+        } else if (currentAnswerValue !== previousAnswerValue) { // Answer changed
           if (previousAnswerValue && typeof previousAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${previousAnswerValue}`] = increment(-1);
           }
           if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
           }
-           // Ensure responses count is not decremented if it's just an answer change
-          if (!finalSurveyUpdates.responses) { // Only increment if not already touched
-             // This case might mean no change in total response count if just changing answer
-          }
+          // No change to total responses if only answer value changed
           actualSurveyStatChangesMade = true; 
         }
       }
@@ -240,7 +238,7 @@ export default function HomePage() {
       
       setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocId! }}));
       
-      if (interactionType === 'answer' || actualSurveyStatChangesMade) {
+      if (actualSurveyStatChangesMade) { // Only fetch if actual stats changed
         const updatedSurveyDoc = await getDoc(surveyRef);
         if (updatedSurveyDoc.exists()) {
             const data = updatedSurveyDoc.data();
@@ -269,12 +267,15 @@ export default function HomePage() {
       return;
     }
 
-    if (submittedAnswer === undefined) {
-        setStatsForCard(null); 
+    if (submittedAnswer === undefined) { // Option was deselected
+        const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'skip'); // Treat deselection as a skip
+        setStatsForCard(null); // Go back to question view if it was deselected
         setUserInitialSelection(undefined);
+        // No automatic proceedToNextCard here, user stays on card but it's now "skipped" / unanswered
         return;
     }
 
+    // Option was selected or changed
     const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'answer', submittedAnswer);
     setStatsForCard(updatedSurveyForStats); 
     setUserInitialSelection(submittedAnswer);
@@ -286,21 +287,14 @@ export default function HomePage() {
     setStatsForCard(null); 
     setUserInitialSelection(undefined);
 
-    if (selectedFilter === 'responded') {
-      // If viewing 'Answered' cards, 'Skip' just moves to the next card in this filter
-      // without changing the card's answer status.
-      proceedToNextCard();
-    } else {
-      // For 'New' or 'Skipped' filters, 'Skip' processes the skip interaction.
-      const currentSurvey = displayedCards[currentCardIndex];
-      const currentQuestion = currentSurvey.questions?.[0];
-      if (!currentQuestion) {
-        proceedToNextCard(); 
-        return;
-      }
-      await processCardInteraction(currentSurvey, currentQuestion, 'skip');
+    const currentSurvey = displayedCards[currentCardIndex];
+    const currentQuestion = currentSurvey.questions?.[0];
+    if (!currentQuestion) {
       proceedToNextCard(); 
+      return;
     }
+    await processCardInteraction(currentSurvey, currentQuestion, 'skip');
+    proceedToNextCard(); 
   };
 
   const proceedToNextCard = () => {
@@ -321,6 +315,10 @@ export default function HomePage() {
     setSelectedFilter(value as FilterType);
   };
 
+  const toggleFilterSortControls = () => {
+    setFilterSortControlsVisible(prev => !prev);
+  };
+
 
   if (authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading authentication...</p></div>;
@@ -332,6 +330,27 @@ export default function HomePage() {
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
+  // Shared Filter/Sort Controls Area
+  const filterSortControls = (
+    <div className="w-full max-w-xs sm:max-w-sm mx-auto mb-3 space-y-2">
+      <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="not-responded">New</TabsTrigger>
+          <TabsTrigger value="responded">Answered</TabsTrigger>
+          <TabsTrigger value="skipped">Skipped</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
+          <Filter className="mr-2 h-4 w-4" /> Topics: All
+        </Button>
+        <Button variant="outline" className="flex-grow" onClick={() => console.log('Sort clicked - coming soon!')}>
+          <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
+        </Button>
+      </div>
+    </div>
+  );
+
   if (statsForCard) {
     const cardToDisplayStats = statsForCard;
     const questionText = cardToDisplayStats.questions?.[0]?.text || "Survey Question";
@@ -342,13 +361,16 @@ export default function HomePage() {
 
     return (
       <div className="flex flex-col items-center justify-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="not-responded">New</TabsTrigger>
-            <TabsTrigger value="responded">Answered</TabsTrigger>
-            <TabsTrigger value="skipped">Skipped</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <Button 
+          variant="outline" 
+          onClick={toggleFilterSortControls} 
+          className="w-full max-w-xs sm:max-w-sm mx-auto mb-2"
+        >
+          <SlidersHorizontal className="mr-2 h-4 w-4" />
+          {filterSortControlsVisible ? 'Hide' : 'Show'} Filters & Sort
+        </Button>
+        {filterSortControlsVisible && filterSortControls}
+        
         <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
           <CardHeader>
             <CardTitle className="text-xl font-headline text-primary">"{questionText}" - Results</CardTitle>
@@ -423,24 +445,17 @@ export default function HomePage() {
     
     return (
       <div className="flex flex-col items-center justify-center text-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="not-responded">New</TabsTrigger>
-            <TabsTrigger value="responded">Answered</TabsTrigger>
-            <TabsTrigger value="skipped">Skipped</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <Button 
+          variant="outline" 
+          onClick={toggleFilterSortControls} 
+          className="w-full max-w-xs sm:max-w-sm mx-auto mb-2"
+        >
+          <SlidersHorizontal className="mr-2 h-4 w-4" />
+          {filterSortControlsVisible ? 'Hide' : 'Show'} Filters & Sort
+        </Button>
+        {filterSortControlsVisible && filterSortControls}
 
-        <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 mt-2 mb-3">
-          <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
-            <Filter className="mr-2 h-4 w-4" /> Topics: All
-          </Button>
-          <Button variant="outline" className="flex-grow" onClick={() => console.log('Sort clicked - coming soon!')}>
-            <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
-          </Button>
-        </div>
-
-        <Card className="p-6 md:p-10 shadow-xl w-full max-w-md">
+        <Card className="p-6 md:p-10 shadow-xl w-full max-w-md mt-3">
           <CardHeader>
             <CardTitle className="text-2xl font-headline text-primary">
               {emptyStateTitle}
@@ -470,46 +485,33 @@ export default function HomePage() {
   if (!currentSurvey || !currentQuestion) { 
     return (
       <div className="flex flex-col items-center justify-center text-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="not-responded">New</TabsTrigger>
-            <TabsTrigger value="responded">Answered</TabsTrigger>
-            <TabsTrigger value="skipped">Skipped</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 mt-2 mb-3">
-          <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
-            <Filter className="mr-2 h-4 w-4" /> Topics: All
-          </Button>
-          <Button variant="outline" className="flex-grow" onClick={() => console.log('Sort clicked - coming soon!')}>
-            <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
-          </Button>
-        </div>
-        <p className="text-muted-foreground">Preparing card...</p>
+         <Button 
+          variant="outline" 
+          onClick={toggleFilterSortControls} 
+          className="w-full max-w-xs sm:max-w-sm mx-auto mb-2"
+        >
+          <SlidersHorizontal className="mr-2 h-4 w-4" />
+          {filterSortControlsVisible ? 'Hide' : 'Show'} Filters & Sort
+        </Button>
+        {filterSortControlsVisible && filterSortControls}
+        <p className="text-muted-foreground mt-3">Preparing card...</p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col items-center justify-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-      <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="not-responded">New</TabsTrigger>
-          <TabsTrigger value="responded">Answered</TabsTrigger>
-          <TabsTrigger value="skipped">Skipped</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      <div className="w-full max-w-xs sm:max-w-sm mx-auto flex items-center gap-2 mt-2 mb-3">
-        <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
-          <Filter className="mr-2 h-4 w-4" /> Topics: All
-        </Button>
-        <Button variant="outline" className="flex-grow" onClick={() => console.log('Sort clicked - coming soon!')}>
-          <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
-        </Button>
-      </div>
-
-      <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6">
+       <Button 
+        variant="outline" 
+        onClick={toggleFilterSortControls} 
+        className="w-full max-w-xs sm:max-w-sm mx-auto mb-2"
+      >
+        <SlidersHorizontal className="mr-2 h-4 w-4" />
+        {filterSortControlsVisible ? 'Hide' : 'Show'} Filters & Sort
+      </Button>
+      {filterSortControlsVisible && filterSortControls}
+      
+      <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6 mt-3">
         {currentSurvey.description && (
           <div className="text-center">
             <p className="text-md font-medium text-primary">{currentSurvey.description}</p>
@@ -528,4 +530,6 @@ export default function HomePage() {
     </div>
   );
 }
+    
+
     
