@@ -6,6 +6,18 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { 
   ListChecks, 
   BarChart2, 
@@ -15,12 +27,15 @@ import {
   Users, 
   FileText,
   Loader2,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import type { Survey } from '@/types';
 import { db, type Timestamp } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
+
 
 // Mock data for activity - this can be replaced with real data later
 const mockActivity = [
@@ -31,18 +46,21 @@ const mockActivity = [
 export default function DashboardClient() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [activity, setActivity] = useState<typeof mockActivity>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [surveyToDelete, setSurveyToDelete] = useState<Survey | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
     } else if (user) {
       fetchDashboardData(user.id);
-      setActivity(mockActivity); // Keep mock activity for now
+      setActivity(mockActivity); 
     } else if (!authLoading && !user) {
-      // If auth is done and still no user, no need to fetch data
       setDataLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,7 +77,6 @@ export default function DashboardClient() {
         return {
           id: docSnap.id,
           ...data,
-          // Ensure createdAt and updatedAt are Dates, Firestore Timestamps are converted
           createdAt: (data.createdAt as Timestamp)?.toDate ? (data.createdAt as Timestamp).toDate() : data.createdAt,
           updatedAt: (data.updatedAt as Timestamp)?.toDate ? (data.updatedAt as Timestamp).toDate() : data.updatedAt,
         } as Survey;
@@ -67,15 +84,16 @@ export default function DashboardClient() {
       setSurveys(fetchedSurveys);
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
-      // Optionally, set an error state and display a message to the user
-      setSurveys([]); // Clear surveys on error or set to a default error state
+      setSurveys([]); 
     } finally {
       setDataLoading(false);
     }
   };
   
   const formatRelativeTime = (dateInput: string | Date) => {
+    if (!dateInput) return 'Unknown date';
     const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (isNaN(date.getTime())) return 'Invalid date';
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
@@ -89,7 +107,34 @@ export default function DashboardClient() {
     return 'Just now';
   };
 
-  if (authLoading || (!user && dataLoading)) { // Show loading if auth is loading OR (no user yet AND data is still attempting to load)
+  const handleDeleteSurvey = async () => {
+    if (!surveyToDelete || surveyToDelete.status !== 'Draft') {
+      toast({ title: "Deletion Error", description: "This survey cannot be deleted or no survey selected.", variant: "destructive" });
+      setSurveyToDelete(null);
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, "surveys", surveyToDelete.id));
+      setSurveys(prevSurveys => prevSurveys.filter(s => s.id !== surveyToDelete.id));
+      toast({ title: "Draft Deleted", description: `Draft survey "${getSurveyTitle(surveyToDelete)}" has been deleted.`, variant: "default" });
+    } catch (error) {
+      console.error("Error deleting survey:", error);
+      toast({ title: "Deletion Failed", description: "Could not delete the draft survey. Please try again.", variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
+      setSurveyToDelete(null);
+    }
+  };
+
+  const getSurveyTitle = (survey: Survey) => {
+    return survey.surveyType === 'single-card' && survey.questions && survey.questions.length > 0
+      ? `Card: "${survey.questions[0].text.substring(0, 30)}${survey.questions[0].text.length > 30 ? "..." : ""}"`
+      : survey.title || "Untitled Survey";
+  };
+
+
+  if (authLoading || (!user && dataLoading)) { 
     return (
       <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -98,7 +143,7 @@ export default function DashboardClient() {
     );
   }
 
-  if (!user) { // Should be caught by useEffect redirect, but as a fallback
+  if (!user) { 
     return <div className="text-center py-10 text-muted-foreground">Redirecting to login...</div>;
   }
 
@@ -108,11 +153,32 @@ export default function DashboardClient() {
 
   return (
     <div className="space-y-8">
+      <AlertDialog open={!!surveyToDelete} onOpenChange={(open) => { if (!open) setSurveyToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the draft survey:
+              <strong className="block mt-2">{surveyToDelete ? getSurveyTitle(surveyToDelete) : ""}</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting} onClick={() => setSurveyToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteSurvey} 
+              disabled={isDeleting}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+            >
+              {isDeleting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...</> : "Delete Draft"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold font-headline text-primary">My Dashboard</h1>
       </div>
 
-      {/* Stats Overview */}
       <div className="grid gap-6 md:grid-cols-3">
         <Card className="shadow-md">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -146,7 +212,6 @@ export default function DashboardClient() {
         </Card>
       </div>
       
-      {/* My Surveys Section */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="text-xl font-headline">My Surveys</CardTitle>
@@ -166,9 +231,8 @@ export default function DashboardClient() {
                   <CardContent className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div className="flex-grow">
                       <h3 className="text-lg font-semibold text-primary">
-                        {survey.surveyType === 'single-card' && survey.questions && survey.questions.length > 0 
-                          ? `Card: "${survey.questions[0].text.substring(0,50)}${survey.questions[0].text.length > 50 ? "..." : ""}"` 
-                          : survey.title || "Untitled Survey"}
+                        {getSurveyTitle(survey)}
+                        {survey.status === 'Draft' && <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">Draft</Badge>}
                       </h3>
                       <p className="text-sm text-muted-foreground">
                         {survey.surveyType === 'single-card' ? 'Single Card Survey' : `${survey.questionCount || 0} questions`} &bull; {survey.responses || 0} responses &bull; Status: <span className={`font-medium ${survey.status === 'Active' ? 'text-green-600' : survey.status === 'Draft' ? 'text-yellow-600' : 'text-red-600'}`}>{survey.status}</span> 
@@ -180,15 +244,28 @@ export default function DashboardClient() {
                       <Button variant="outline" size="sm" asChild>
                         <Link href={`/survey/${survey.id}/stats`}><BarChart2 className="mr-1 h-4 w-4" /> Stats</Link>
                       </Button>
-                      <Button variant="outline" size="sm" disabled> {/* Edit survey functionality to be implemented */}
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        disabled={survey.status !== 'Draft'}
+                        onClick={() => toast({ title: "Coming Soon!", description: "Editing draft surveys will be available in a future update."})}
+                      >
                         <Edit3 className="mr-1 h-4 w-4" /> Edit
                       </Button>
-                       <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary" disabled> {/* Share functionality to be implemented */}
+                       <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary" disabled> 
                         <Share2 className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="text-destructive/70 hover:text-destructive" disabled> {/* Delete functionality to be implemented */}
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="text-destructive/70 hover:text-destructive" 
+                          disabled={survey.status !== 'Draft'}
+                          onClick={() => survey.status === 'Draft' && setSurveyToDelete(survey)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
                     </div>
                   </CardContent>
                 </Card>
@@ -198,7 +275,6 @@ export default function DashboardClient() {
         </CardContent>
       </Card>
 
-      {/* Recent Activity Section */}
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="text-xl font-headline">Recent Activity</CardTitle>
@@ -225,4 +301,3 @@ export default function DashboardClient() {
     </div>
   );
 }
-

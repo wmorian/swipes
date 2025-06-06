@@ -1,15 +1,22 @@
+
 // @/app/survey/create/preview/page.tsx
 "use client";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useSurveyCreation } from "@/context/SurveyCreationContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import SurveyCard from "@/components/survey/SurveyCard"; 
 import type { Question as SurveyCardQuestion, Survey } from "@/types";
-import { ArrowLeft, CheckCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, ChevronDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { db, serverTimestamp } from "@/lib/firebase";
 import { collection, addDoc } from "firebase/firestore";
@@ -19,11 +26,11 @@ export default function CreateSurveyPreviewPage() {
   const router = useRouter();
   const { surveyData, setCurrentStep, resetSurveyCreation } = useSurveyCreation();
   const { toast } = useToast();
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [isRedirectingAfterPublish, setIsRedirectingAfterPublish] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [isRedirectingAfterFinalize, setIsRedirectingAfterFinalize] = useState(false);
 
   useEffect(() => {
-    if (isRedirectingAfterPublish || isPublishing) { 
+    if (isRedirectingAfterFinalize || isFinalizing) { 
       return;
     }
 
@@ -32,15 +39,13 @@ export default function CreateSurveyPreviewPage() {
       return;
     }
 
-    // Since Step 1 (details) is removed, surveyType is always "single-card" by context default.
-    // Description is also handled by context default ("").
     if (surveyData.questions.length === 0 || surveyData.questions.some(q => !q.text.trim() || q.options.some(opt => !opt.trim()))) {
         toast({ title: "Incomplete Question", description: "Please ensure your question and options are filled out.", variant: "destructive"});
-        router.push('/survey/create/questions'); // Go back to questions (new Step 1)
+        router.push('/survey/create/questions'); 
         return;
     }
-    setCurrentStep(2); // This is now Step 2
-  }, [user, authLoading, router, surveyData, setCurrentStep, toast, isPublishing, isRedirectingAfterPublish]);
+    setCurrentStep(2); 
+  }, [user, authLoading, router, surveyData, setCurrentStep, toast, isFinalizing, isRedirectingAfterFinalize]);
   
   const mapContextQuestionToSurveyCardQuestion = (cq: typeof surveyData.questions[0]): SurveyCardQuestion => ({
     id: cq.id,
@@ -49,29 +54,28 @@ export default function CreateSurveyPreviewPage() {
     options: cq.options,
   });
 
-  const handlePublish = async () => {
+  const handleFinalizeSurvey = async (statusToSet: 'Active' | 'Draft') => {
     if (!user) {
-        toast({ title: "Authentication Error", description: "You must be logged in to publish.", variant: "destructive"});
+        toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive"});
         return;
     }
     if (surveyData.questions.length === 0 || !surveyData.questions[0]) {
-      toast({ title: "No Question", description: "Cannot publish a card without a question.", variant: "destructive" });
+      toast({ title: "No Question", description: "Cannot finalize a card without a question.", variant: "destructive" });
       return;
     }
 
-    setIsPublishing(true);
+    setIsFinalizing(true);
 
-    // Ensure these defaults for single-card, even if context might have them.
-    const finalDescription = surveyData.description || ""; // Use context description or default to empty.
+    const finalDescription = surveyData.description || ""; 
 
     const newSurveyFirestoreData: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: any, updatedAt: any } = {
-        title: "", // Single cards don't have titles in UI
-        description: finalDescription, // Use the description from context (which defaults to "")
+        title: "", 
+        description: finalDescription, 
         surveyType: "single-card",
         questions: surveyData.questions,
         questionCount: 1,
         responses: 0,
-        status: 'Active',
+        status: statusToSet, // Use the passed status
         privacy: 'Public', 
         createdBy: user.id,
         optionCounts: surveyData.questions[0].options.reduce((acc, option) => {
@@ -86,33 +90,33 @@ export default function CreateSurveyPreviewPage() {
     try {
       const docRef = await addDoc(collection(db, "surveys"), newSurveyFirestoreData);
       toast({
-        title: "Survey Card Published!",
-        description: `Your single card survey has been created. ID: ${docRef.id}`,
+        title: statusToSet === 'Active' ? "Survey Card Published!" : "Survey Card Saved as Draft!",
+        description: `Your single card survey has been ${statusToSet === 'Active' ? 'published' : 'saved'}. ID: ${docRef.id}`,
         variant: "default"
       });
-      setIsRedirectingAfterPublish(true); 
+      setIsRedirectingAfterFinalize(true); 
       resetSurveyCreation(); 
       router.push(user ? `/dashboard?newSurveyId=${docRef.id}` : `/`);
     } catch (error) {
-      console.error("Error publishing survey: ", error);
+      console.error("Error finalizing survey: ", error);
       toast({
-        title: "Publishing Failed",
-        description: "Could not publish your survey card. Please try again.",
+        title: statusToSet === 'Active' ? "Publishing Failed" : "Saving Draft Failed",
+        description: "Could not finalize your survey card. Please try again.",
         variant: "destructive"
       });
-      setIsPublishing(false); 
+      setIsFinalizing(false); 
     }
   };
 
   const handleBack = () => {
-    setCurrentStep(1); // Go back to Step 1 (Questions page)
+    setCurrentStep(1); 
     router.push("/survey/create/questions");
   };
 
-  if (authLoading || (!user && !authLoading) || isRedirectingAfterPublish) {
-     return <div className="text-center py-10">{isRedirectingAfterPublish ? "Redirecting..." : (authLoading ? "Loading preview..." : "Redirecting to login...")}</div>;
+  if (authLoading || (!user && !authLoading) || isRedirectingAfterFinalize) {
+     return <div className="text-center py-10">{isRedirectingAfterFinalize ? "Redirecting..." : (authLoading ? "Loading preview..." : "Redirecting to login...")}</div>;
   }
-   if (surveyData.questions.length === 0) { // surveyType is always single-card
+   if (surveyData.questions.length === 0) { 
     return <div className="text-center py-10">Loading question data or incomplete configuration...</div>;
   }
 
@@ -122,7 +126,7 @@ export default function CreateSurveyPreviewPage() {
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
-        <CardTitle className="text-2xl font-headline">Preview & Publish</CardTitle>
+        <CardTitle className="text-2xl font-headline">Preview & Finalize</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
 
@@ -132,9 +136,10 @@ export default function CreateSurveyPreviewPage() {
               question={surveyCardQuestion}
               questionNumber={1}
               totalQuestions={1} 
-              onNext={() => { alert("This is a static preview. Navigation is disabled.")}} 
-              onSkip={() => { alert("This is a static preview. Navigation is disabled.")}}
+              onNext={() => { /* Preview mode, no actual submission */ }} 
+              onSkip={() => { /* Preview mode, no actual submission */ }}
               isLastQuestion={true}
+              initialAnswer={undefined} // No initial answer in preview
             />
           ) : (
             <p className="text-center text-destructive">No question available for preview.</p>
@@ -142,12 +147,31 @@ export default function CreateSurveyPreviewPage() {
         </div>
       </CardContent>
       <CardFooter className="flex justify-between items-center mt-8 pt-6 border-t">
-          <Button variant="outline" onClick={handleBack} disabled={isPublishing}>
+          <Button variant="outline" onClick={handleBack} disabled={isFinalizing}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
-          <Button onClick={handlePublish} className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isPublishing || isRedirectingAfterPublish}>
-            {isPublishing || isRedirectingAfterPublish ? "Publishing..." : <><CheckCircle className="mr-2 h-4 w-4" /> Publish</>}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isFinalizing || isRedirectingAfterFinalize}>
+                {isFinalizing ? "Processing..." : "Finalize"}
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem 
+                onClick={() => handleFinalizeSurvey('Active')} 
+                disabled={isFinalizing || isRedirectingAfterFinalize}
+              >
+                <CheckCircle className="mr-2 h-4 w-4" /> Publish
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => handleFinalizeSurvey('Draft')} 
+                disabled={isFinalizing || isRedirectingAfterFinalize}
+              >
+                Save as Draft
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </CardFooter>
     </Card>
   );
