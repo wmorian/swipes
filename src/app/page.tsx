@@ -483,7 +483,6 @@ export default function HomePage() {
             <p className="text-md font-medium text-primary">{currentSurvey.description}</p>
           </div>
         )}
-         <p className="text-xs text-muted-foreground text-center">Public Card {currentCardIndex + 1} of {displayedCards.length}</p>
         <SurveyCard
           question={currentQuestion}
           questionNumber={currentCardIndex + 1}

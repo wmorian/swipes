@@ -78,9 +78,6 @@ export default function SurveyCard({
     <Card className="w-full shadow-xl animate-in fade-in-50 duration-500">
       <CardHeader>
         <CardTitle className="text-xl font-headline text-primary">{question.text}</CardTitle>
-        <CardDescription>
-          Question {questionNumber} of {totalQuestions}
-        </CardDescription>
       </CardHeader>
       <CardContent className="min-h-[150px]">
         {question.type === "multiple-choice" ? (
