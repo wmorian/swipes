@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw } from 'lucide-react'; // Removed Filter, ArrowUpDown, SlidersHorizontal
+import { ArrowRight, RefreshCw, Loader2 } from 'lucide-react';
 import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
 import { 
   collection, 
@@ -41,11 +41,11 @@ export default function HomePage() {
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('not-responded');
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
-  // Removed isFilterPopoverOpen state
+  const [isRefreshingCards, setIsRefreshingCards] = useState(false);
 
   const fetchSurveyData = async (isManualRefresh: boolean = false) => {
     if (!user) { 
-      setIsLoading(false);
+      if (!isManualRefresh) setIsLoading(false);
       return;
     }
     if (!isManualRefresh) {
@@ -104,7 +104,9 @@ export default function HomePage() {
       setPublicCards([]);
       setUserCardInteractions({});
     } finally {
-      setIsLoading(false);
+      if (!isManualRefresh || (isManualRefresh && isLoading)) {
+        setIsLoading(false);
+      }
     }
   };
   
@@ -307,16 +309,19 @@ export default function HomePage() {
     }
   };
   
-  const resetCardView = () => {
-    fetchSurveyData(true); 
+  const resetCardView = async () => {
+    setIsRefreshingCards(true);
+    try {
+      await fetchSurveyData(true); 
+    } finally {
+      setIsRefreshingCards(false);
+    }
   };
 
   const handleFilterChange = (value: string) => {
     setSelectedFilter(value as FilterType);
-    // Removed setIsFilterPopoverOpen(false); 
   };
 
-  // Removed handleTopicFilterClick and handleSortClick methods
 
   if (authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading authentication...</p></div>;
@@ -328,8 +333,6 @@ export default function HomePage() {
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
-  // Removed filterSortControlsPopoverContent
-
   const renderPageContent = () => {
     if (statsForCard) {
       const cardToDisplayStats = statsForCard;
@@ -433,8 +436,13 @@ export default function HomePage() {
                 {emptyStateDescription}
               </CardDescription>
               {showRefreshButton && (
-                   <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
-                      <RefreshCw className="mr-2 h-4 w-4" /> {refreshButtonText}
+                   <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto" disabled={isRefreshingCards}>
+                      {isRefreshingCards ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                      )}
+                      {refreshButtonText}
                   </Button>
               )}
             </CardContent>
@@ -474,7 +482,6 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col items-center justify-start flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-      {/* Tabs directly on page */}
       <div className="w-full max-w-xs sm:max-w-sm mx-auto mb-3">
         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
