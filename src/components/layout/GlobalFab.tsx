@@ -14,10 +14,12 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { useFab } from '@/context/FabContext';
+import { usePathname } from 'next/navigation';
 
 export default function GlobalFab() {
   const { isFabOpen, setIsFabOpen, toggleFab } = useFab();
   const { toast } = useToast();
+  const pathname = usePathname();
 
   const handleComingSoon = (featureName: string) => {
     toast({
@@ -30,6 +32,16 @@ export default function GlobalFab() {
   const handleNavigation = () => {
     setIsFabOpen(false); // Close FAB after navigation
   };
+
+  // Define paths where the FAB should be hidden
+  const hiddenFabPaths = [
+    '/survey/create/questions',
+    '/survey/create/preview',
+  ];
+
+  if (hiddenFabPaths.includes(pathname)) {
+    return null; // Don't render the FAB on these pages
+  }
 
   return (
     <div className="fixed bottom-[5.5rem] right-6 md:bottom-8 md:right-8 z-50 flex flex-col items-center">
