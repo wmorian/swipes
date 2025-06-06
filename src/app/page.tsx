@@ -26,7 +26,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type FilterType = 'not-responded' | 'responded' | 'topic';
+type FilterType = 'not-responded' | 'responded' | 'skipped';
 
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth(); 
@@ -35,7 +35,7 @@ export default function HomePage() {
   const [publicCards, setPublicCards] = useState<Survey[]>([]);
   const [displayedCards, setDisplayedCards] = useState<Survey[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [allCardsViewed, setAllCardsViewed] = useState(false); // True if all cards *for the current filter* are viewed
+  const [allCardsViewed, setAllCardsViewed] = useState(false); 
   const [isLoading, setIsLoading] = useState(true); 
   const [statsForCard, setStatsForCard] = useState<Survey | null>(null);
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
@@ -47,12 +47,9 @@ export default function HomePage() {
       return;
     }
     setIsLoading(true);
-    // Reset states that depend on fetched data
     setAllCardsViewed(false);
     setCurrentCardIndex(0);
     setStatsForCard(null);
-    // userCardInteractions will be refetched
-    // publicCards and displayedCards will be refetched/recalculated
 
     try {
       const surveysCol = collection(db, "surveys");
@@ -92,22 +89,20 @@ export default function HomePage() {
           });
           setUserCardInteractions(interactionsMap);
         } else {
-           setUserCardInteractions({}); // No surveys, so no interactions
+           setUserCardInteractions({});
         }
       } else {
-        setUserCardInteractions({}); // No surveys, so no interactions
+        setUserCardInteractions({});
       }
-      // Note: Filtering and setting displayedCards will happen in the dedicated useEffect
     } catch (error) {
       console.error("Error fetching data:", error);
       setPublicCards([]);
       setUserCardInteractions({});
     } finally {
-      setIsLoading(false); // This will trigger the filtering useEffect if publicCards changed
+      setIsLoading(false);
     }
   };
   
-  // Effect for initial data fetch based on auth state
   useEffect(() => {
     if (!authLoading) {
       if (user) {
@@ -119,30 +114,28 @@ export default function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]); 
 
-  // Effect to filter cards when base data or filter changes
   useEffect(() => {
-    // Do not run filtering if still in initial auth or data loading phase
     if (authLoading || isLoading) return; 
-    if (!user) return; // Should be redirected by now if no user
+    if (!user) return;
 
     let newFilteredCards: Survey[] = [];
     if (publicCards.length > 0) {
-      if (selectedFilter === 'not-responded') {
-        newFilteredCards = publicCards.filter(card =>
-          !userCardInteractions[card.id] || userCardInteractions[card.id].isSkipped
-        );
+      if (selectedFilter === 'not-responded') { // Truly new cards
+        newFilteredCards = publicCards.filter(card => !userCardInteractions[card.id]);
       } else if (selectedFilter === 'responded') {
         newFilteredCards = publicCards.filter(card =>
           userCardInteractions[card.id] && !userCardInteractions[card.id].isSkipped
         );
-      } else if (selectedFilter === 'topic') {
-        newFilteredCards = []; // Topic filter coming soon
+      } else if (selectedFilter === 'skipped') {
+        newFilteredCards = publicCards.filter(card =>
+          userCardInteractions[card.id]?.isSkipped === true
+        );
       }
     }
     
     setDisplayedCards(newFilteredCards);
     setCurrentCardIndex(0);
-    setAllCardsViewed(newFilteredCards.length === 0 && publicCards.length > 0); // True if filtering results in 0 cards, but there were cards to filter
+    setAllCardsViewed(newFilteredCards.length === 0 && publicCards.length > 0);
 
   }, [publicCards, userCardInteractions, selectedFilter, authLoading, isLoading, user]);
 
@@ -161,7 +154,7 @@ export default function HomePage() {
     let actualSurveyStatChangesMade = false;
 
     const previousAnswerValue = existingUserInteraction?.answerValue;
-    const wasPreviouslySkipped = existingUserInteraction?.isSkipped ?? true; 
+    const wasPreviouslySkipped = existingUserInteraction?.isSkipped ?? false; // Default to false if no interaction
 
     const isCurrentlySkipped = interactionType === 'skip';
     const currentAnswerValue = isCurrentlySkipped ? undefined : submittedAnswer;
@@ -179,22 +172,23 @@ export default function HomePage() {
     } else { 
       if (wasPreviouslySkipped) { 
         if (!isCurrentlySkipped) { 
-          finalSurveyUpdates.skipCount = increment(-1);
+          finalSurveyUpdates.skipCount = increment(-1); // Was skipped, now answered
           finalSurveyUpdates.responses = increment(1);
           if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
           }
           actualSurveyStatChangesMade = true;
         }
-      } else { 
+        // If was skipped and is still skipped, no change to survey stats.
+      } else { // Was previously answered
         if (isCurrentlySkipped) { 
-          finalSurveyUpdates.responses = increment(-1);
+          finalSurveyUpdates.responses = increment(-1); // Was answered, now skipped
           if (previousAnswerValue && typeof previousAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${previousAnswerValue}`] = increment(-1);
           }
           finalSurveyUpdates.skipCount = increment(1);
           actualSurveyStatChangesMade = true;
-        } else if (currentAnswerValue !== previousAnswerValue) { 
+        } else if (currentAnswerValue !== previousAnswerValue) { // Answer changed
           if (previousAnswerValue && typeof previousAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${previousAnswerValue}`] = increment(-1);
           }
@@ -203,6 +197,7 @@ export default function HomePage() {
           }
           actualSurveyStatChangesMade = true; 
         }
+        // If was answered and answer is the same, no change to survey stats.
       }
     }
     
@@ -212,7 +207,12 @@ export default function HomePage() {
       if (actualSurveyStatChangesMade) { 
           await updateDoc(surveyRef, finalSurveyUpdates);
       } else if (existingUserInteraction) { 
-          await updateDoc(surveyRef, { updatedAt: serverTimestamp() });
+          // If no stat changes but interaction exists, still update its timestamp and our local record
+          // No, we only update survey if stats changed or it was a new answer. 
+          // If interaction changes (e.g. skipped -> answered) then stats will change.
+          // If answer changes (e.g. option A -> B) then stats will change.
+          // If interaction is just resubmitting same answer, or reskipping, don't update survey doc timestamp.
+          // However, the userSurveyAnswers doc WILL be updated.
       }
 
       const interactionData: Omit<UserSurveyAnswer, 'id' | 'answeredAt'> & { answeredAt: any } = {
@@ -225,16 +225,17 @@ export default function HomePage() {
       };
 
       const newInteractionForLocalState = { ...interactionData, answeredAt: new Date() };
-      const newDocId = existingUserInteraction?.docId || (await addDoc(collection(db, "userSurveyAnswers"), interactionData)).id;
+      let newDocId = existingUserInteraction?.docId;
 
       if (existingUserInteraction?.docId) {
         await updateDoc(doc(db, "userSurveyAnswers", existingUserInteraction.docId), interactionData);
+      } else {
+        newDocId = (await addDoc(collection(db, "userSurveyAnswers"), interactionData)).id;
       }
-      // Update local state immediately for UI responsiveness
-      setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocId }}));
       
-      // Update publicCards with new stats if changes were made
-      if (actualSurveyStatChangesMade || interactionType === 'answer') { 
+      setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocId! }}));
+      
+      if (actualSurveyStatChangesMade || (interactionType === 'answer' && !existingUserInteraction)) { 
         const updatedSurveyDoc = await getDoc(surveyRef);
         if (updatedSurveyDoc.exists()) {
             const data = updatedSurveyDoc.data();
@@ -244,7 +245,6 @@ export default function HomePage() {
               updatedAt: (data.updatedAt as Timestamp)?.toDate(),
             } as Survey;
             setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedSurveyForStats : card));
-            // displayedCards will update via its useEffect when publicCards changes.
         }
       }
       return { updatedSurveyForStats, interactionProcessed: true };
@@ -283,14 +283,6 @@ export default function HomePage() {
       return;
     }
 
-    const existingUserInteraction = userCardInteractions[currentSurvey.id];
-
-    if (existingUserInteraction && !existingUserInteraction.isSkipped) {
-      // If user already answered, skip just moves to next card without changing stats
-      proceedToNextCard(); 
-      return;
-    }
-
     await processCardInteraction(currentSurvey, currentQuestion, 'skip');
     proceedToNextCard(); 
   };
@@ -300,29 +292,26 @@ export default function HomePage() {
     if (currentCardIndex < displayedCards.length - 1) {
       setCurrentCardIndex(prevIndex => prevIndex + 1);
     } else {
-      setAllCardsViewed(true); // All cards for the current filter are viewed
+      setAllCardsViewed(true);
     }
   };
   
   const resetCardView = () => {
-    // This will refetch data and then the useEffect will re-filter based on the current selectedFilter
-    // It will also reset currentCardIndex and allCardsViewed appropriately via the useEffects.
     fetchSurveyData(); 
   };
 
   const handleFilterChange = (value: string) => {
     setSelectedFilter(value as FilterType);
-    // Resetting index and allCardsViewed is handled by the filtering useEffect
   };
 
 
   if (authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading authentication...</p></div>;
   }
-  if (!user && !authLoading) { // Should be handled by redirect in useEffect, but as a fallback
+  if (!user && !authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
-  if (isLoading && user) {  // Initial data load for the user
+  if (isLoading && user) { 
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
@@ -339,7 +328,7 @@ export default function HomePage() {
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>
             <TabsTrigger value="responded">Answered</TabsTrigger>
-            <TabsTrigger value="topic" disabled>Topic</TabsTrigger>
+            <TabsTrigger value="skipped">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
         <Card className="w-full max-w-xs sm:max-w-sm shadow-xl">
@@ -372,13 +361,12 @@ export default function HomePage() {
     );
   }
 
-  // Determine empty/all-viewed state messages
   let emptyStateTitle = "You've Seen All Cards!";
-  let emptyStateDescription = "Thanks for participating! Check back later for new cards for this filter.";
-  let showViewAgainCta = true; // Default to true if all cards for current filter are viewed
+  let emptyStateDescription = "Thanks for participating! Check back later for new cards or try another filter.";
+  let showViewAgainCta = true; 
   
-  const noCardsInitially = publicCards.length === 0 && !isLoading; // No cards in the system at all
-  const noCardsForFilter = publicCards.length > 0 && displayedCards.length === 0 && !isLoading; // Cards exist, but filter yields none
+  const noCardsInitially = publicCards.length === 0 && !isLoading; 
+  const noCardsForFilter = publicCards.length > 0 && displayedCards.length === 0 && !isLoading;
 
   if (noCardsInitially) {
     emptyStateTitle = "No Public Cards Yet!";
@@ -386,21 +374,18 @@ export default function HomePage() {
     showViewAgainCta = false;
   } else if (noCardsForFilter) {
     if (selectedFilter === 'not-responded') {
-      emptyStateTitle = "All Caught Up!";
-      emptyStateDescription = "You've viewed all new cards. Try another filter or check back later!";
+      emptyStateTitle = "All New Cards Viewed!";
+      emptyStateDescription = "You've seen all the brand new cards. Try another filter or check back later!";
     } else if (selectedFilter === 'responded') {
       emptyStateTitle = "No Answered Cards Yet";
       emptyStateDescription = "You haven't answered any survey cards. Switch to 'New' to get started!";
-    } else if (selectedFilter === 'topic') {
-      emptyStateTitle = "Topic Filter Coming Soon";
-      emptyStateDescription = "Filtering by topic will be available in a future update.";
+    } else if (selectedFilter === 'skipped') {
+      emptyStateTitle = "No Skipped Cards Yet";
+      emptyStateDescription = "You haven't skipped any cards. Skipped cards will appear here.";
     }
     showViewAgainCta = false; 
   } else if (allCardsViewed && displayedCards.length === 0 && publicCards.length > 0) {
-    // This means a filter initially had cards, but now all are viewed and currentCardIndex is past the end.
-    // The above noCardsForFilter should catch cases where the filter *initially* yields no cards.
-    // This state ensures message for "all viewed for *this* filter"
-    emptyStateTitle = `All ${selectedFilter === 'responded' ? 'Answered' : 'New'} Cards Viewed!`;
+    emptyStateTitle = `All ${selectedFilter === 'responded' ? 'Answered' : selectedFilter === 'skipped' ? 'Skipped' : 'New'} Cards Viewed!`;
     emptyStateDescription = "You've gone through all available cards for this filter.";
     showViewAgainCta = true;
   }
@@ -413,7 +398,7 @@ export default function HomePage() {
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>
             <TabsTrigger value="responded">Answered</TabsTrigger>
-            <TabsTrigger value="topic" disabled>Topic</TabsTrigger>
+            <TabsTrigger value="skipped">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
         <Card className="p-6 md:p-10 shadow-xl w-full max-w-md">
@@ -426,7 +411,7 @@ export default function HomePage() {
             <CardDescription className="text-md mb-6">
               {emptyStateDescription}
             </CardDescription>
-            {showViewAgainCta && displayedCards.length > 0 && ( // Only show "View Again" if there were cards for this filter
+            {showViewAgainCta && displayedCards.length > 0 && (
                  <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
                     <RefreshCw className="mr-2 h-4 w-4" /> View Cards Again
                 </Button>
@@ -447,16 +432,13 @@ export default function HomePage() {
   const currentUserInitialAnswer = userCardInteractions[currentSurvey?.id]?.isSkipped ? null : userCardInteractions[currentSurvey?.id]?.answerValue;
 
   if (!currentSurvey || !currentQuestion) { 
-     // This case should ideally be covered by loading or empty states above.
-     // If displayedCards is populated but currentCardIndex is out of bounds (e.g., after interaction makes it empty),
-     // the allCardsViewed or noCardsForFilter conditions should catch it.
     return (
       <div className="text-center py-10 text-muted-foreground">
         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-4 sm:mb-6 mx-auto">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>
             <TabsTrigger value="responded">Answered</TabsTrigger>
-            <TabsTrigger value="topic" disabled>Topic</TabsTrigger>
+            <TabsTrigger value="skipped">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
         Preparing card...
@@ -470,7 +452,7 @@ export default function HomePage() {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="not-responded">New</TabsTrigger>
           <TabsTrigger value="responded">Answered</TabsTrigger>
-          <TabsTrigger value="topic" disabled>Topic</TabsTrigger>
+          <TabsTrigger value="skipped">Skipped</TabsTrigger>
         </TabsList>
       </Tabs>
       <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6">
@@ -493,5 +475,4 @@ export default function HomePage() {
     </div>
   );
 }
-
     
