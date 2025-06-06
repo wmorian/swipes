@@ -37,6 +37,7 @@ export default function HomePage() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true); 
   const [statsForCard, setStatsForCard] = useState<Survey | null>(null);
+  const [userInitialSelection, setUserInitialSelection] = useState<string | undefined>(undefined);
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('not-responded');
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
@@ -49,6 +50,7 @@ export default function HomePage() {
     setIsLoading(true);
     setCurrentCardIndex(0); 
     setStatsForCard(null);
+    setUserInitialSelection(undefined);
 
     try {
       const surveysCol = collection(db, "surveys");
@@ -140,6 +142,8 @@ export default function HomePage() {
 
     if (prevSelectedFilterRef.current !== selectedFilter) {
       setCurrentCardIndex(0); 
+      setStatsForCard(null); // Clear stats view if filter changes
+      setUserInitialSelection(undefined);
     }
     prevSelectedFilterRef.current = selectedFilter;
 
@@ -156,7 +160,7 @@ export default function HomePage() {
 
     const existingUserInteraction = userCardInteractions[currentSurvey.id];
     const surveyRef = doc(db, "surveys", currentSurvey.id);
-    const finalSurveyUpdates: Record<string, any> = { updatedAt: serverTimestamp() };
+    let finalSurveyUpdates: Record<string, any> = { updatedAt: serverTimestamp() };
     let actualSurveyStatChangesMade = false;
 
     const previousAnswerValue = existingUserInteraction?.answerValue;
@@ -208,7 +212,7 @@ export default function HomePage() {
     let updatedSurveyForStats: Survey = currentSurvey;
 
     try {
-      if (actualSurveyStatChangesMade) { 
+      if (Object.keys(finalSurveyUpdates).length > 1 || actualSurveyStatChangesMade) { // Ensure there's more than just updatedAt or a real change
           await updateDoc(surveyRef, finalSurveyUpdates);
       }
       
@@ -232,7 +236,9 @@ export default function HomePage() {
       
       setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocId! }}));
       
-      if (actualSurveyStatChangesMade || (interactionType === 'answer' && !existingUserInteraction)) { 
+      // Always fetch the latest survey data if we intend to show stats or if crucial stats fields were updated
+      // This ensures the returned survey object for stats display is fresh.
+      if (interactionType === 'answer' || actualSurveyStatChangesMade) {
         const updatedSurveyDoc = await getDoc(surveyRef);
         if (updatedSurveyDoc.exists()) {
             const data = updatedSurveyDoc.data();
@@ -262,12 +268,14 @@ export default function HomePage() {
     }
     if (submittedAnswer === undefined) {
         console.warn("handleCardAnswerSubmission called without an answer.");
-        proceedToNextCard();
+        // Don't show stats if no answer was actually submitted
+        setStatsForCard(null); 
         return;
     }
 
     const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'answer', submittedAnswer);
     setStatsForCard(updatedSurveyForStats); 
+    setUserInitialSelection(submittedAnswer);
   };
 
   const handleCardSkip = async () => {
@@ -279,13 +287,15 @@ export default function HomePage() {
       proceedToNextCard(); 
       return;
     }
-
+    setStatsForCard(null); // Ensure we are not in stats view before skipping
+    setUserInitialSelection(undefined);
     await processCardInteraction(currentSurvey, currentQuestion, 'skip');
     proceedToNextCard(); 
   };
 
   const proceedToNextCard = () => {
     setStatsForCard(null); 
+    setUserInitialSelection(undefined);
     if (currentCardIndex < displayedCards.length - 1) {
       setCurrentCardIndex(prevIndex => prevIndex + 1);
     } else {
@@ -294,7 +304,7 @@ export default function HomePage() {
   };
   
   const resetCardView = () => {
-    fetchSurveyData(); 
+    fetchSurveyData(); // This already resets currentCardIndex, statsForCard, etc.
   };
 
   const handleFilterChange = (value: string) => {
@@ -318,6 +328,7 @@ export default function HomePage() {
     const totalResponses = cardToDisplayStats.responses || 0;
     const totalSkips = cardToDisplayStats.skipCount || 0;
     const totalInteractions = totalResponses + totalSkips;
+    const currentOptionCounts = cardToDisplayStats.optionCounts || {};
 
     return (
       <div className="flex flex-col items-center justify-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
@@ -328,25 +339,34 @@ export default function HomePage() {
             <TabsTrigger value="skipped">Skipped</TabsTrigger>
           </TabsList>
         </Tabs>
-        {/* Placeholder for Topic/Sort filters - NOT shown on stats view */}
         <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
           <CardHeader>
             <CardTitle className="text-xl font-headline text-primary">"{questionText}" - Results</CardTitle>
             <CardDescription>Total Interactions: {totalInteractions}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {cardToDisplayStats.optionCounts && Object.entries(cardToDisplayStats.optionCounts).map(([option, count]) => {
-              const numericCount = Number(count); 
-              const percentage = totalResponses > 0 && !isNaN(numericCount) ? ((numericCount / totalResponses) * 100).toFixed(1) : "0.0";
-              return (
-                <div key={option} className="text-sm">
-                  <p><strong>{option}:</strong> {isNaN(numericCount) ? 'N/A' : numericCount} vote{numericCount === 1 ? '' : 's'} ({percentage}%)</p>
-                  <div className="w-full bg-muted rounded-full h-2.5 my-1">
-                    <div className="bg-primary h-2.5 rounded-full" style={{ width: `${totalResponses > 0 && !isNaN(numericCount) ? (numericCount / totalResponses) * 100 : 0}%` }}></div>
+            {Object.keys(currentOptionCounts).length > 0 ? (
+              Object.entries(currentOptionCounts).map(([option, count]) => {
+                const numericCount = Number(count); 
+                const percentage = totalResponses > 0 && !isNaN(numericCount) ? ((numericCount / totalResponses) * 100).toFixed(1) : "0.0";
+                const isSelectedOption = option === userInitialSelection;
+                return (
+                  <div key={option} className={`text-sm p-3 rounded-md border ${isSelectedOption ? 'bg-accent/10 border-accent shadow-md' : 'bg-muted/50 border-border'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                        <span className={`font-medium ${isSelectedOption ? 'text-accent-foreground' : 'text-foreground'}`}>{option}</span>
+                        <span className={`text-xs ${isSelectedOption ? 'text-accent-foreground/80' : 'text-muted-foreground'}`}>
+                            {isNaN(numericCount) ? 'N/A' : numericCount} vote{numericCount === 1 ? '' : 's'} ({percentage}%)
+                        </span>
+                    </div>
+                    <div className="w-full bg-background rounded-full h-2.5">
+                      <div className={`${isSelectedOption ? 'bg-accent' : 'bg-primary'} h-2.5 rounded-full`} style={{ width: `${totalResponses > 0 && !isNaN(numericCount) ? (numericCount / totalResponses) * 100 : 0}%` }}></div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              <p className="text-sm text-muted-foreground">No responses yet for these options.</p>
+            )}
              <p className="text-sm pt-2"><strong>Skips:</strong> {totalSkips}</p>
           </CardContent>
           <CardFooter>
