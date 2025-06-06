@@ -16,7 +16,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  // AlertDialogTrigger, // No longer needed here for the individual delete buttons
 } from "@/components/ui/alert-dialog";
 import { 
   ListChecks, 
@@ -154,6 +154,7 @@ export default function DashboardClient() {
   return (
     <div className="space-y-8">
       <AlertDialog open={!!surveyToDelete} onOpenChange={(open) => { if (!open) setSurveyToDelete(null); }}>
+        {/* AlertDialogTrigger is not needed here if open is controlled by state */}
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure you want to delete this draft?</AlertDialogTitle>
@@ -255,17 +256,23 @@ export default function DashboardClient() {
                        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary" disabled> 
                         <Share2 className="h-4 w-4" />
                       </Button>
-                      <AlertDialogTrigger asChild>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="text-destructive/70 hover:text-destructive" 
-                          disabled={survey.status !== 'Draft'}
-                          onClick={() => survey.status === 'Draft' && setSurveyToDelete(survey)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
+                      {/* 
+                        The AlertDialogTrigger was here. We change it to a regular Button
+                        that sets state to open the main AlertDialog defined at the top.
+                      */}
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-destructive/70 hover:text-destructive" 
+                        disabled={survey.status !== 'Draft'}
+                        onClick={() => {
+                          if (survey.status === 'Draft') {
+                            setSurveyToDelete(survey);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -301,3 +308,4 @@ export default function DashboardClient() {
     </div>
   );
 }
+
