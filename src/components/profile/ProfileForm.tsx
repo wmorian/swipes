@@ -1,3 +1,4 @@
+
 // @/components/profile/ProfileForm.tsx
 "use client";
 
@@ -15,13 +16,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
-import { Camera } from "lucide-react";
+import { Camera, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { Separator } from "@/components/ui/separator";
 
 
 const profileFormSchema = z.object({
@@ -35,7 +37,7 @@ const profileFormSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
 export default function ProfileForm() {
-  const { user, updateUser, loading: authLoading } = useAuth();
+  const { user, updateUser, logout, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [formProcessing, setFormProcessing] = useState(false);
@@ -81,6 +83,26 @@ export default function ProfileForm() {
       setFormProcessing(false);
     }
   }
+
+  const handleLogout = async () => {
+    setFormProcessing(true); // Indicate processing
+    try {
+      await logout();
+      router.push('/'); 
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out.",
+      });
+    } catch (error) {
+      toast({
+        title: "Logout Failed",
+        description: "Could not log out. Please try again.",
+        variant: "destructive",
+      });
+      setFormProcessing(false); // Reset processing state on error
+    }
+    // No need to setFormProcessing(false) on success because of redirect.
+  };
 
   if (authLoading) {
     return <div className="text-center py-10">Loading profile...</div>;
@@ -158,6 +180,18 @@ export default function ProfileForm() {
           </form>
         </Form>
       </CardContent>
+      <CardFooter className="flex-col items-stretch gap-4 pt-6 mt-6 border-t">
+        <Button 
+          variant="destructive" 
+          onClick={handleLogout} 
+          className="w-full"
+          disabled={formProcessing || authLoading}
+        >
+          <LogOut className="mr-2 h-4 w-4" /> 
+          {formProcessing ? "Logging out..." : "Log Out"}
+        </Button>
+      </CardFooter>
     </Card>
   );
 }
+

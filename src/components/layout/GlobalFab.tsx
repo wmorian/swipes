@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { 
-  PlusCircle, 
+  Plus, 
   FilePlus,
   Layers,
   ListPlus,
@@ -98,11 +98,11 @@ export default function GlobalFab() {
 
       {/* Main FAB toggle button */}
       <Button
-        className="h-16 w-16 rounded-full p-0 shadow-xl bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center"
+        className="h-16 w-16 rounded-full p-0 shadow-xl bg-accent hover:bg-accent/90 text-accent-foreground flex items-center justify-center [&_svg]:h-7 [&_svg]:w-7"
         aria-label={isFabOpen ? "Close create options" : "Open create options"}
         onClick={toggleFab}
       >
-        {isFabOpen ? <X className="h-8 w-8" /> : <PlusCircle className="h-8 w-8" />}
+        {isFabOpen ? <X /> : <Plus />}
       </Button>
     </div>
   );
