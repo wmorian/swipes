@@ -168,7 +168,7 @@ export default function CreateSurveyPreviewPage() {
   }
   const surveyCardQuestion = mapContextQuestionToSurveyCardQuestion(firstQuestion);
 
-  const mainButtonText = surveyData.id ? "Publish Draft" : "Publish";
+  const mainButtonText = "Publish";
   const dropdownItemText = surveyData.id ? "Update Draft" : "Save as Draft";
 
   return (
