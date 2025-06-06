@@ -31,6 +31,7 @@ export interface Survey {
   updatedAt?: Timestamp | Date; // Firestore Timestamp or Date for local construction
   optionCounts?: Record<string, number>; // For multiple-choice stats: { "Option1": 10, "Option2": 5 }
   skipCount?: number; // How many times this card was skipped
+  isDailyPoll?: boolean; // Flag to identify the daily poll
 }
 
 export interface Answer { // This type seems more for aggregated answers/stats, might deprecate if not used elsewhere
@@ -48,3 +49,4 @@ export interface UserSurveyAnswer {
   isSkipped: boolean;
   answeredAt: Timestamp | Date;
 }
+

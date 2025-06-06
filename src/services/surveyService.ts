@@ -1,3 +1,4 @@
+
 // @/services/surveyService.ts
 import {
   db,
@@ -18,8 +19,10 @@ import {
   addDoc,
   deleteDoc,
   type QueryConstraint,
+  limit,
 } from 'firebase/firestore';
 import type { Survey, UserSurveyAnswer, Question, SurveyCreationData } from '@/types';
+import { generateDailyPoll } from '@/ai/flows/generate-daily-poll-flow';
 
 const surveysCol = collection(db, 'surveys');
 const userSurveyAnswersCol = collection(db, 'userSurveyAnswers');
@@ -41,6 +44,7 @@ export const surveyService = {
       where('privacy', '==', 'Public'),
       where('surveyType', '==', 'single-card'),
       where('status', '==', 'Active'),
+      where('isDailyPoll', '!=', true), // Exclude daily poll from regular feed
       orderBy('createdAt', 'desc'),
     ];
     const surveySnapshot = await getDocs(query(surveysCol, ...surveyQueryConstraints));
@@ -58,8 +62,6 @@ export const surveyService = {
     surveyCardIds: string[]
   ): Promise<Record<string, UserSurveyAnswer & { docId: string }>> => {
     if (surveyCardIds.length === 0) return {};
-    // Firestore 'in' queries are limited to 30 elements in the array.
-    // If surveyCardIds can exceed this, batching is needed. For now, assume it's within limits.
     const interactionsQuery = query(
       userSurveyAnswersCol,
       where('userId', '==', userId),
@@ -79,7 +81,7 @@ export const surveyService = {
 
   recordUserInteractionAndUpdateStats: async (params: {
     userId: string;
-    survey: Survey; // Pass the whole survey object
+    survey: Survey; 
     questionId: string;
     currentAnswerValue?: any;
     isCurrentlySkipped: boolean;
@@ -121,7 +123,7 @@ export const surveyService = {
           }
           actualSurveyStatChangesMade = true;
         }
-      } else { // Was previously answered
+      } else { 
         if (isCurrentlySkipped) {
           finalSurveyUpdates.responses = increment(-1);
           if (previousAnswerValue && typeof previousAnswerValue === 'string' && survey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
@@ -129,7 +131,7 @@ export const surveyService = {
           }
           finalSurveyUpdates.skipCount = increment(1);
           actualSurveyStatChangesMade = true;
-        } else if (currentAnswerValue !== previousAnswerValue) { // Answer changed
+        } else if (currentAnswerValue !== previousAnswerValue) { 
           if (previousAnswerValue && typeof previousAnswerValue === 'string' && survey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${previousAnswerValue}`] = increment(-1);
           }
@@ -157,17 +159,13 @@ export const surveyService = {
         answeredAt: serverTimestamp(),
       };
 
-      let newDocId = existingInteraction?.docId;
-
       if (existingInteraction?.docId) {
         await updateDoc(doc(db, 'userSurveyAnswers', existingInteraction.docId), interactionData);
       } else {
-        const newDocRef = await addDoc(userSurveyAnswersCol, interactionData);
-        newDocId = newDocRef.id;
+        await addDoc(userSurveyAnswersCol, interactionData);
       }
       
-      // For UI update, re-fetch the survey to get accurate counts
-      if (actualSurveyStatChangesMade) {
+      if (actualSurveyStatChangesMade || Object.keys(finalSurveyUpdates).length > 1) {
         const updatedSurveyDoc = await getDoc(surveyRef);
         if (updatedSurveyDoc.exists()) {
             const data = updatedSurveyDoc.data();
@@ -213,7 +211,6 @@ export const surveyService = {
   },
   
   deleteSurveyDraft: async (surveyId: string): Promise<void> => {
-    // Add additional checks if needed e.g. ensure it's a draft and belongs to user
     const surveyRef = doc(db, 'surveys', surveyId);
     await deleteDoc(surveyRef);
   },
@@ -229,4 +226,68 @@ export const surveyService = {
       } as Survey;
     });
   },
+
+  fetchOrCreateDailyPoll: async (): Promise<Survey | null> => {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const dailyPollQuery = query(
+      surveysCol,
+      where('isDailyPoll', '==', true),
+      where('status', '==', 'Active'),
+      where('createdAt', '>=', twentyFourHoursAgo),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+
+    const snapshot = await getDocs(dailyPollQuery);
+
+    if (!snapshot.empty) {
+      const pollDoc = snapshot.docs[0];
+      return {
+        id: pollDoc.id,
+        ...mapTimestampToDate(pollDoc.data(), ['createdAt', 'updatedAt']),
+      } as Survey;
+    }
+
+    // If no recent daily poll, generate a new one
+    try {
+      const pollContent = await generateDailyPoll();
+      const optionCounts: Record<string, number> = {};
+      pollContent.options.forEach(opt => optionCounts[opt] = 0);
+
+      const newPollData: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: FieldValue, updatedAt: FieldValue } = {
+        title: "Today's Poll",
+        surveyType: 'single-card',
+        questions: [{
+          id: `dp_q_${Date.now()}`,
+          text: pollContent.questionText,
+          type: 'multiple-choice',
+          options: pollContent.options,
+        }],
+        questionCount: 1,
+        responses: 0,
+        skipCount: 0,
+        status: 'Active',
+        privacy: 'Public',
+        createdBy: 'SYSTEM_AI',
+        isDailyPoll: true,
+        optionCounts,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      const docRef = await addDoc(surveysCol, newPollData);
+      const newPollSnap = await getDoc(docRef);
+      if (newPollSnap.exists()) {
+        return {
+          id: newPollSnap.id,
+          ...mapTimestampToDate(newPollSnap.data(), ['createdAt', 'updatedAt']),
+        } as Survey;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error generating or creating daily poll:", error);
+      return null;
+    }
+  },
 };
+

@@ -1,3 +1,4 @@
+
 // @/app/page.tsx
 "use client";
 
@@ -8,10 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw, Loader2, SlidersHorizontal, Filter } from 'lucide-react';
+import { ArrowRight, RefreshCw, Loader2, SlidersHorizontal, Star } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { surveyService } from '@/services/surveyService'; // Import surveyService
+import { surveyService } from '@/services/surveyService'; 
 
 type FilterType = 'not-responded' | 'responded' | 'skipped';
 
@@ -19,6 +20,13 @@ export default function HomePage() {
   const { user, loading: authLoading } = useAuth(); 
   const router = useRouter();
   
+  const [dailyPoll, setDailyPoll] = useState<Survey | null>(null);
+  const [isLoadingDailyPoll, setIsLoadingDailyPoll] = useState(true);
+  const [statsForDailyPoll, setStatsForDailyPoll] = useState<Survey | null>(null);
+  const [userInitialSelectionForDailyPoll, setUserInitialSelectionForDailyPoll] = useState<string | undefined>(undefined);
+  const [userDailyPollInteraction, setUserDailyPollInteraction] = useState<(UserSurveyAnswer & { docId: string }) | null>(null);
+
+
   const [publicCards, setPublicCards] = useState<Survey[]>([]);
   const [displayedCards, setDisplayedCards] = useState<Survey[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -30,6 +38,26 @@ export default function HomePage() {
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
   const [isRefreshingCards, setIsRefreshingCards] = useState(false);
 
+  const fetchDailyPollData = async () => {
+    if (!user) {
+        setIsLoadingDailyPoll(false);
+        return;
+    }
+    setIsLoadingDailyPoll(true);
+    try {
+        const poll = await surveyService.fetchOrCreateDailyPoll();
+        setDailyPoll(poll);
+        if (poll && user) {
+            const interactions = await surveyService.fetchUserInteractionsForSurveyCards(user.id, [poll.id]);
+            setUserDailyPollInteraction(interactions[poll.id] || null);
+        }
+    } catch (error) {
+        console.error("Error fetching daily poll:", error);
+        setDailyPoll(null);
+    } finally {
+        setIsLoadingDailyPoll(false);
+    }
+  };
 
   const fetchSurveyData = async (isManualRefresh: boolean = false) => {
     if (!user) { 
@@ -39,7 +67,7 @@ export default function HomePage() {
     if (!isManualRefresh || (isManualRefresh && isLoading)) {
       setIsLoading(true);
     } else if (isManualRefresh) {
-      setIsRefreshingCards(true); // For button spinner
+      setIsRefreshingCards(true); 
       setCurrentCardIndex(0); 
       setStatsForCard(null);
       setUserInitialSelection(undefined);
@@ -73,6 +101,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!authLoading) {
       if (user) {
+        fetchDailyPollData();
         fetchSurveyData(false); 
       } else {
         router.push('/login');
@@ -120,31 +149,34 @@ export default function HomePage() {
     currentSurvey: Survey, 
     currentQuestion: Question,
     interactionType: 'answer' | 'skip', 
-    submittedAnswer?: any 
+    submittedAnswer?: any,
+    isDailyPollCard?: boolean
   ): Promise<{ updatedSurveyForStats: Survey; interactionProcessed: boolean }> => {
     if (!user) return { updatedSurveyForStats: currentSurvey, interactionProcessed: false };
 
-    const existingUserInteraction = userCardInteractions[currentSurvey.id];
+    const existingInteraction = isDailyPollCard ? userDailyPollInteraction : userCardInteractions[currentSurvey.id];
     
     try {
       const result = await surveyService.recordUserInteractionAndUpdateStats({
         userId: user.id,
-        survey: currentSurvey, // Pass the whole survey object
+        survey: currentSurvey,
         questionId: currentQuestion.id,
         currentAnswerValue: interactionType === 'skip' ? undefined : submittedAnswer,
         isCurrentlySkipped: interactionType === 'skip',
-        existingInteraction: existingUserInteraction,
+        existingInteraction: existingInteraction || undefined,
       });
 
       if (result.interactionProcessed) {
-        // Update local state for userCardInteractions
         const updatedInteractionData = await surveyService.fetchUserInteractionsForSurveyCards(user.id, [currentSurvey.id]);
         if (updatedInteractionData[currentSurvey.id]) {
-          setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: updatedInteractionData[currentSurvey.id] }));
+          if (isDailyPollCard) {
+            setUserDailyPollInteraction(updatedInteractionData[currentSurvey.id]);
+            setDailyPoll(result.updatedSurveyForStats); // Update daily poll with new stats
+          } else {
+            setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: updatedInteractionData[currentSurvey.id] }));
+            setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? result.updatedSurveyForStats : card));
+          }
         }
-        
-        // Update local publicCards with the potentially updated survey (e.g., counts)
-        setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? result.updatedSurveyForStats : card));
       }
       return result;
     } catch (error) {
@@ -153,6 +185,30 @@ export default function HomePage() {
     }
   };
 
+  const handleDailyPollAnswerSubmission = async (submittedAnswer?: any) => {
+    if (!dailyPoll || !dailyPoll.questions || dailyPoll.questions.length === 0) return;
+    const currentQuestion = dailyPoll.questions[0];
+
+    if (submittedAnswer === undefined) {
+      await processCardInteraction(dailyPoll, currentQuestion, 'skip', undefined, true);
+      setStatsForDailyPoll(null);
+      setUserInitialSelectionForDailyPoll(undefined);
+      // Daily poll doesn't "proceed" in the same way, it just shows stats or resets
+      return;
+    }
+    const { updatedSurveyForStats } = await processCardInteraction(dailyPoll, currentQuestion, 'answer', submittedAnswer, true);
+    setStatsForDailyPoll(updatedSurveyForStats);
+    setUserInitialSelectionForDailyPoll(submittedAnswer);
+  };
+
+  const handleDailyPollSkip = async () => {
+    if (!dailyPoll || !dailyPoll.questions || dailyPoll.questions.length === 0) return;
+    const currentQuestion = dailyPoll.questions[0];
+    await processCardInteraction(dailyPoll, currentQuestion, 'skip', undefined, true);
+    setStatsForDailyPoll(null);
+    setUserInitialSelectionForDailyPoll(undefined);
+  };
+  
   const handleCardAnswerSubmission = async (submittedAnswer?: any) => {
     if (displayedCards.length === 0 || !displayedCards[currentCardIndex]) return;
     const currentSurvey = displayedCards[currentCardIndex];
@@ -164,12 +220,10 @@ export default function HomePage() {
     }
 
     if (submittedAnswer === undefined) { 
-        // This path should ideally not be hit if SurveyCard directly calls onNext with selectedValue
-        // and skip has its own handler. But as a fallback:
         await processCardInteraction(currentSurvey, currentQuestion, 'skip'); 
         setStatsForCard(null); 
         setUserInitialSelection(undefined);
-        proceedToNextCard(); // Proceed after skip if no stats are shown for skips.
+        proceedToNextCard();
         return;
     }
 
@@ -210,13 +264,14 @@ export default function HomePage() {
   };
   
   const resetCardView = async () => {
+    setIsRefreshingCards(true);
     await fetchSurveyData(true); 
+    // No need to set isRefreshingCards to false here, fetchSurveyData's finally block handles it
   };
 
   const handleFilterChange = (value: string) => {
     setSelectedFilter(value as FilterType);
   };
-
 
   if (authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading authentication...</p></div>;
@@ -224,59 +279,101 @@ export default function HomePage() {
   if (!user && !authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
-  if (isLoading && user && publicCards.length === 0 && !isRefreshingCards) {
-     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
-  }
   
-  const renderPageContent = () => {
-    if (statsForCard) {
-      const cardToDisplayStats = statsForCard; // This should be the updated survey from processCardInteraction
-      const questionText = cardToDisplayStats.questions?.[0]?.text || "Survey Question";
-      const totalResponses = cardToDisplayStats.responses || 0;
-      const totalSkips = cardToDisplayStats.skipCount || 0;
-      const totalInteractions = totalResponses + totalSkips;
-      const currentOptionCounts = cardToDisplayStats.optionCounts || {};
-      const originalOptions = cardToDisplayStats.questions?.[0]?.options || [];
+  const renderStatsCard = (surveyForStats: Survey, initialSelection?: string, onNext?: () => void, cardTitlePrefix: string = "") => {
+    const questionText = surveyForStats.questions?.[0]?.text || "Survey Question";
+    const totalResponses = surveyForStats.responses || 0;
+    const totalSkips = surveyForStats.skipCount || 0;
+    const totalInteractions = totalResponses + totalSkips;
+    const currentOptionCounts = surveyForStats.optionCounts || {};
+    const originalOptions = surveyForStats.questions?.[0]?.options || [];
 
-      return (
-          <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
-            <CardHeader>
-              <CardTitle className="text-xl font-headline text-primary">"{questionText}" - Results</CardTitle>
-              <CardDescription>Total Interactions: {totalInteractions}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {originalOptions.length > 0 ? (
-                originalOptions.map((option) => {
-                  const count = currentOptionCounts[option] || 0;
-                  const numericCount = Number(count); 
-                  const percentage = totalResponses > 0 && !isNaN(numericCount) ? ((numericCount / totalResponses) * 100).toFixed(1) : "0.0";
-                  const isSelectedOption = option === userInitialSelection;
-                  return (
-                    <div key={option} className={`text-sm p-3 rounded-md border ${isSelectedOption ? 'bg-accent/10 border-accent shadow-md' : 'bg-muted/50 border-border'}`}>
-                      <div className="flex justify-between items-center mb-1">
-                          <span className={`font-medium ${isSelectedOption ? 'text-foreground' : 'text-foreground'}`}>{option}</span>
-                          <span className={`text-xs ${isSelectedOption ? 'text-foreground/80' : 'text-muted-foreground'}`}>
-                              {isNaN(numericCount) ? 'N/A' : numericCount} vote{numericCount === 1 ? '' : 's'} ({percentage}%)
-                          </span>
-                      </div>
-                      <div className="w-full bg-background rounded-full h-2.5">
-                        <div className={`${isSelectedOption ? 'bg-accent' : 'bg-primary'} h-2.5 rounded-full`} style={{ width: `${totalResponses > 0 && !isNaN(numericCount) ? (numericCount / totalResponses) * 100 : 0}%` }}></div>
-                      </div>
+    return (
+        <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
+          <CardHeader>
+            <CardTitle className="text-xl font-headline text-primary">{cardTitlePrefix}"{questionText}" - Results</CardTitle>
+            <CardDescription>Total Interactions: {totalInteractions}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {originalOptions.length > 0 ? (
+              originalOptions.map((option) => {
+                const count = currentOptionCounts[option] || 0;
+                const numericCount = Number(count); 
+                const percentage = totalResponses > 0 && !isNaN(numericCount) ? ((numericCount / totalResponses) * 100).toFixed(1) : "0.0";
+                const isSelectedOption = option === initialSelection;
+                return (
+                  <div key={option} className={`text-sm p-3 rounded-md border ${isSelectedOption ? 'bg-accent/10 border-accent shadow-md' : 'bg-muted/50 border-border'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                        <span className={`font-medium ${isSelectedOption ? 'text-foreground' : 'text-foreground'}`}>{option}</span>
+                        <span className={`text-xs ${isSelectedOption ? 'text-foreground/80' : 'text-muted-foreground'}`}>
+                            {isNaN(numericCount) ? 'N/A' : numericCount} vote{numericCount === 1 ? '' : 's'} ({percentage}%)
+                        </span>
                     </div>
-                  );
-                })
-              ) : (
-                <p className="text-sm text-muted-foreground">No options defined for this question, or no responses yet.</p>
-              )}
-              <p className="text-sm pt-2"><strong>Skips:</strong> {totalSkips}</p>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={proceedToNextCard} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
-                Next Card <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </CardFooter>
-          </Card>
-      );
+                    <div className="w-full bg-background rounded-full h-2.5">
+                      <div className={`${isSelectedOption ? 'bg-accent' : 'bg-primary'} h-2.5 rounded-full`} style={{ width: `${totalResponses > 0 && !isNaN(numericCount) ? (numericCount / totalResponses) * 100 : 0}%` }}></div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-sm text-muted-foreground">No options defined for this question, or no responses yet.</p>
+            )}
+            <p className="text-sm pt-2"><strong>Skips:</strong> {totalSkips}</p>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={onNext || (() => setStatsForDailyPoll(null))} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+              {onNext ? "Next Card" : "Close Results"} <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+          </CardFooter>
+        </Card>
+    );
+  };
+
+  const renderDailyPollSection = () => {
+    if (isLoadingDailyPoll) {
+        return <div className="text-center my-6"><Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" /> <p className="text-muted-foreground">Loading Today's Poll...</p></div>;
+    }
+    if (!dailyPoll || !dailyPoll.questions || dailyPoll.questions.length === 0) {
+        return <div className="text-center my-6 p-4 bg-muted/50 rounded-lg"><p className="text-muted-foreground">Today's poll isn't available right now. Check back later!</p></div>;
+    }
+    const dailyPollQuestion = dailyPoll.questions[0];
+
+    if (statsForDailyPoll) {
+        return renderStatsCard(statsForDailyPoll, userInitialSelectionForDailyPoll, () => { setStatsForDailyPoll(null); setUserInitialSelectionForDailyPoll(undefined); }, "Today's Poll: ");
+    }
+    
+    return (
+      <div className="mb-8 p-4 border border-dashed border-accent/50 rounded-lg bg-accent/5 shadow-sm">
+        <h2 className="text-xl font-semibold text-center mb-3 text-accent font-headline flex items-center justify-center gap-2">
+          <Star className="h-5 w-5" /> Today's Poll <Star className="h-5 w-5" />
+        </h2>
+        <div className="w-full max-w-xs sm:max-w-sm mx-auto">
+           {dailyPoll.description && (
+            <div className="text-center mb-2">
+              <p className="text-md font-medium text-primary">{dailyPoll.description}</p>
+            </div>
+          )}
+          <SurveyCard
+            question={dailyPollQuestion}
+            questionNumber={1}
+            totalQuestions={1}
+            onNext={handleDailyPollAnswerSubmission}
+            onSkip={handleDailyPollSkip}
+            isLastQuestion={true}
+            initialAnswer={userDailyPollInteraction && !userDailyPollInteraction.isSkipped ? userDailyPollInteraction.answerValue : undefined}
+          />
+        </div>
+      </div>
+    );
+  };
+
+
+  const renderRegularCardsContent = () => {
+    if (isLoading && user && publicCards.length === 0 && !isRefreshingCards) {
+      return <div className="flex justify-center items-center min-h-[calc(50vh)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
+    }
+    if (statsForCard) {
+      return renderStatsCard(statsForCard, userInitialSelection, proceedToNextCard);
     }
 
     let emptyStateTitle = "You've Seen All Cards!";
@@ -290,7 +387,7 @@ export default function HomePage() {
     );
 
     if (showEmptyOrAllViewedState) {
-      if (publicCards.length === 0) {
+      if (publicCards.length === 0 && !isLoadingDailyPoll) { // Ensure daily poll isn't also loading
           emptyStateTitle = "No Public Cards Yet!";
           emptyStateDescription = "Check back later for engaging public survey cards, or create your own.";
           showRefreshButtonInEmptyState = false; 
@@ -350,7 +447,7 @@ export default function HomePage() {
     const currentSurvey = displayedCards[currentCardIndex];
     const currentQuestion = currentSurvey?.questions?.[0]; 
     const currentUserInitialAnswerForCard = userCardInteractions[currentSurvey?.id]?.isSkipped 
-                                            ? null 
+                                            ? undefined 
                                             : userCardInteractions[currentSurvey?.id]?.answerValue;
 
     if (!currentSurvey || !currentQuestion) { 
@@ -384,6 +481,9 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col items-center justify-start flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
+      
+      {renderDailyPollSection()}
+
       <div className="w-full max-w-xs sm:max-w-sm mx-auto mb-3">
         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
@@ -395,8 +495,9 @@ export default function HomePage() {
       </div>
       
       <div className="flex flex-col items-center justify-center flex-grow w-full">
-        {renderPageContent()}
+        {renderRegularCardsContent()}
       </div>
     </div>
   );
 }
+
