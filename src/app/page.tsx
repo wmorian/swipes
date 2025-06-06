@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw, Loader2, SlidersHorizontal } from 'lucide-react';
+import { ArrowRight, RefreshCw, Loader2, SlidersHorizontal, Filter } from 'lucide-react';
 import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
 import { 
   collection, 
@@ -25,6 +25,7 @@ import {
 } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 
 type FilterType = 'not-responded' | 'responded' | 'skipped';
 
@@ -43,16 +44,16 @@ export default function HomePage() {
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
   const [isRefreshingCards, setIsRefreshingCards] = useState(false);
 
+
   const fetchSurveyData = async (isManualRefresh: boolean = false) => {
     if (!user) { 
       if (!isManualRefresh) setIsLoading(false);
       return;
     }
-    if (!isManualRefresh) {
+    // Only set global loading if it's not a manual refresh, or if it is a manual refresh but we're already in a loading state (e.g. initial page load)
+    if (!isManualRefresh || (isManualRefresh && isLoading)) {
       setIsLoading(true);
     } else {
-      // For manual refresh, we don't set global isLoading, 
-      // but we do reset current card view states immediately.
       setCurrentCardIndex(0); 
       setStatsForCard(null);
       setUserInitialSelection(undefined);
@@ -106,7 +107,7 @@ export default function HomePage() {
       setPublicCards([]);
       setUserCardInteractions({});
     } finally {
-      if (!isManualRefresh || (isManualRefresh && isLoading)) { // Ensure isLoading is set to false if it was a full load
+      if (!isManualRefresh || (isManualRefresh && isLoading)) { 
         setIsLoading(false);
       }
     }
@@ -277,6 +278,8 @@ export default function HomePage() {
         await processCardInteraction(currentSurvey, currentQuestion, 'skip'); 
         setStatsForCard(null); 
         setUserInitialSelection(undefined);
+        // No proceedToNextCard() here; stats view for skips is not typical
+        // or if it is, it should be handled by the caller (e.g., if a skip button shows stats)
         return;
     }
 
@@ -291,6 +294,12 @@ export default function HomePage() {
     setStatsForCard(null); 
     setUserInitialSelection(undefined);
 
+    if (selectedFilter === 'responded') {
+        // If viewing answered cards, "skip" just means go to the next one without re-processing.
+        proceedToNextCard();
+        return;
+    }
+    
     const currentSurvey = displayedCards[currentCardIndex];
     const currentQuestion = currentSurvey.questions?.[0];
     if (!currentQuestion) {
@@ -388,7 +397,7 @@ export default function HomePage() {
 
     let emptyStateTitle = "You've Seen All Cards!";
     let emptyStateDescription = "Thanks for participating! Check back later for new cards or try another filter.";
-    let showRefreshButton = false;
+    let showRefreshButtonInEmptyState = false;
     let refreshButtonText = "View Cards Again";
     
     const showEmptyOrAllViewedState = (!isLoading || publicCards.length > 0 ) && user && ( 
@@ -400,21 +409,21 @@ export default function HomePage() {
       if (publicCards.length === 0) {
           emptyStateTitle = "No Public Cards Yet!";
           emptyStateDescription = "Check back later for engaging public survey cards, or create your own.";
-          showRefreshButton = false; 
+          showRefreshButtonInEmptyState = false; 
       } else if (displayedCards.length === 0 && publicCards.length > 0) { 
           if (selectedFilter === 'not-responded') {
             emptyStateTitle = "All New Cards Viewed!";
             emptyStateDescription = "You've seen all available new cards. You can check for more or try refreshing.";
-            showRefreshButton = true;
+            showRefreshButtonInEmptyState = true;
             refreshButtonText = "Check for New Cards";
           } else if (selectedFilter === 'responded') {
             emptyStateTitle = "No Answered Cards Yet";
             emptyStateDescription = "You haven't answered any survey cards. Switch to 'New' to get started!";
-            showRefreshButton = false;
+            showRefreshButtonInEmptyState = false;
           } else if (selectedFilter === 'skipped') {
             emptyStateTitle = "No Skipped Cards Yet";
             emptyStateDescription = "You haven't skipped any cards. Skipped cards will appear here.";
-            showRefreshButton = false;
+            showRefreshButtonInEmptyState = false;
           }
       } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) { 
           let filterName = "Cards";
@@ -424,7 +433,7 @@ export default function HomePage() {
           
           emptyStateTitle = `All ${filterName.replace(" Cards", "")} Cards Viewed!`;
           emptyStateDescription = "You've gone through all available cards for this filter.";
-          showRefreshButton = true;
+          showRefreshButtonInEmptyState = true;
           refreshButtonText = `Refresh ${filterName}`;
       }
       
@@ -439,7 +448,7 @@ export default function HomePage() {
               <CardDescription className="text-md mb-6">
                 {emptyStateDescription}
               </CardDescription>
-              {showRefreshButton && (
+              {showRefreshButtonInEmptyState && (
                    <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto" disabled={isRefreshingCards}>
                       {isRefreshingCards ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin text-muted-foreground" />
@@ -480,6 +489,11 @@ export default function HomePage() {
             isLastQuestion={currentCardIndex === displayedCards.length - 1}
             initialAnswer={currentUserInitialAnswerForCard} 
           />
+          {selectedFilter === 'responded' && !statsForCard && (
+             <Button onClick={proceedToNextCard} className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground">
+                Next Answered Card <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+          )}
         </div>
     );
   };
@@ -509,4 +523,5 @@ export default function HomePage() {
 
 
     
+
 
