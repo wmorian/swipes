@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw, Loader2 } from 'lucide-react';
+import { ArrowRight, RefreshCw, Loader2, SlidersHorizontal } from 'lucide-react';
 import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
 import { 
   collection, 
@@ -50,12 +50,14 @@ export default function HomePage() {
     }
     if (!isManualRefresh) {
       setIsLoading(true);
+    } else {
+      // For manual refresh, we don't set global isLoading, 
+      // but we do reset current card view states immediately.
+      setCurrentCardIndex(0); 
+      setStatsForCard(null);
+      setUserInitialSelection(undefined);
     }
     
-    setCurrentCardIndex(0); 
-    setStatsForCard(null);
-    setUserInitialSelection(undefined);
-
     try {
       const surveysCol = collection(db, "surveys");
       const surveyQueryConstraints: QueryConstraint[] = [
@@ -104,7 +106,7 @@ export default function HomePage() {
       setPublicCards([]);
       setUserCardInteractions({});
     } finally {
-      if (!isManualRefresh || (isManualRefresh && isLoading)) {
+      if (!isManualRefresh || (isManualRefresh && isLoading)) { // Ensure isLoading is set to false if it was a full load
         setIsLoading(false);
       }
     }
@@ -122,7 +124,7 @@ export default function HomePage() {
   }, [user, authLoading]); 
 
   useEffect(() => {
-    if (authLoading || (isLoading && publicCards.length === 0)) return; 
+    if (authLoading || (isLoading && publicCards.length === 0 && !isRefreshingCards)) return; 
     if (!user) {
       setDisplayedCards([]);
       setCurrentCardIndex(0);
@@ -153,7 +155,7 @@ export default function HomePage() {
     }
     prevSelectedFilterRef.current = selectedFilter;
 
-  }, [publicCards, userCardInteractions, selectedFilter, authLoading, isLoading, user]);
+  }, [publicCards, userCardInteractions, selectedFilter, authLoading, isLoading, user, isRefreshingCards]);
 
 
   const processCardInteraction = async (
@@ -329,7 +331,7 @@ export default function HomePage() {
   if (!user && !authLoading) {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
-  if (isLoading && user && publicCards.length === 0) {
+  if (isLoading && user && publicCards.length === 0 && !isRefreshingCards) {
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
@@ -341,6 +343,7 @@ export default function HomePage() {
       const totalSkips = cardToDisplayStats.skipCount || 0;
       const totalInteractions = totalResponses + totalSkips;
       const currentOptionCounts = cardToDisplayStats.optionCounts || {};
+      const originalOptions = cardToDisplayStats.questions?.[0]?.options || [];
 
       return (
           <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
@@ -349,8 +352,9 @@ export default function HomePage() {
               <CardDescription>Total Interactions: {totalInteractions}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {Object.keys(currentOptionCounts).length > 0 ? (
-                Object.entries(currentOptionCounts).map(([option, count]) => {
+              {originalOptions.length > 0 ? (
+                originalOptions.map((option) => {
+                  const count = currentOptionCounts[option] || 0;
                   const numericCount = Number(count); 
                   const percentage = totalResponses > 0 && !isNaN(numericCount) ? ((numericCount / totalResponses) * 100).toFixed(1) : "0.0";
                   const isSelectedOption = option === userInitialSelection;
@@ -369,7 +373,7 @@ export default function HomePage() {
                   );
                 })
               ) : (
-                <p className="text-sm text-muted-foreground">No responses yet for these options.</p>
+                <p className="text-sm text-muted-foreground">No options defined for this question, or no responses yet.</p>
               )}
               <p className="text-sm pt-2"><strong>Skips:</strong> {totalSkips}</p>
             </CardContent>
@@ -438,9 +442,9 @@ export default function HomePage() {
               {showRefreshButton && (
                    <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto" disabled={isRefreshingCards}>
                       {isRefreshingCards ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin text-muted-foreground" />
                       ) : (
-                        <RefreshCw className="mr-2 h-4 w-4" />
+                        <RefreshCw className="mr-2 h-4 w-4 text-muted-foreground" />
                       )}
                       {refreshButtonText}
                   </Button>
@@ -505,3 +509,4 @@ export default function HomePage() {
 
 
     
+
