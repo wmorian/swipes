@@ -4,30 +4,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import SurveyStatsDisplay from '@/components/survey/SurveyStatsDisplay';
-import type { Survey, Answer } from '@/types';
+import type { Survey, Answer, Question } from '@/types';
 import { useAuth } from '@/context/AuthContext';
-
-// Mock data
-const mockSurveyData: Survey = {
-  id: '123',
-  title: 'Sample Feedback Survey',
-  questionCount: 3,
-  responses: 5, 
-  status: 'Active',
-  privacy: 'Public',
-  questions: [
-    { id: 'q1', text: 'How satisfied are you with our service?', type: 'rating', options: [] },
-    { id: 'q2', text: 'What features would you like to see improved?', type: 'text', options: [] },
-    { id: 'q3', text: 'Would you recommend us to a friend?', type: 'multiple-choice', options: ['Yes', 'No', 'Maybe'] },
-  ]
-};
-
-const mockAnswersData: Answer[] = [
-  { questionId: 'q1', value: 5 }, { questionId: 'q1', value: 4 }, { questionId: 'q1', value: 5 }, { questionId: 'q1', value: 3 }, { questionId: 'q1', value: 4 },
-  { questionId: 'q2', value: 'Faster loading times.' }, { questionId: 'q2', value: 'More customization options.' }, { questionId: 'q2', value: 'Better mobile support.' }, { questionId: 'q2', value: 'Nothing, it is great!' }, { questionId: 'q2', value: 'Integrations with other tools' },
-  { questionId: 'q3', value: 'Yes' }, { questionId: 'q3', value: 'Yes' }, { questionId: 'q3', value: 'No' }, { questionId: 'q3', value: 'Maybe' }, { questionId: 'q3', value: 'Yes' },
-];
-
+import { db, type Timestamp } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { Loader2, ShieldAlert } from 'lucide-react';
 
 export default function SurveyStatsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -36,8 +17,9 @@ export default function SurveyStatsPage() {
   const surveyId = params.id as string;
 
   const [survey, setSurvey] = useState<Survey | null>(null);
-  const [answers, setAnswers] = useState<Answer[]>([]);
+  const [answers, setAnswers] = useState<Answer[]>([]); // Transformed from survey.optionCounts
   const [dataLoading, setDataLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -46,30 +28,104 @@ export default function SurveyStatsPage() {
   }, [user, authLoading, router, surveyId]);
   
   useEffect(() => {
-    if (user && surveyId) { // Only fetch data if user is logged in
-      // In a real app, fetch survey and answers data by surveyId
-      // Ensure only authorized users can see stats (e.g., survey owner)
-      setTimeout(() => { // Simulate API call
-        setSurvey(mockSurveyData); 
-        setAnswers(mockAnswersData.filter(ans => mockSurveyData.questions?.some(q => q.id === ans.questionId)));
-        setDataLoading(false);
-      }, 500);
+    if (user && surveyId) {
+      const fetchSurveyStats = async () => {
+        setDataLoading(true);
+        setAccessDenied(false);
+        try {
+          const surveyRef = doc(db, "surveys", surveyId);
+          const surveySnap = await getDoc(surveyRef);
+
+          if (surveySnap.exists()) {
+            const fetchedSurveyData = surveySnap.data() as Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: Timestamp, updatedAt: Timestamp };
+            
+            if (fetchedSurveyData.createdBy !== user.id) {
+              setAccessDenied(true);
+              setSurvey(null);
+              setDataLoading(false);
+              return;
+            }
+            
+            const processedSurvey: Survey = {
+              id: surveySnap.id,
+              ...fetchedSurveyData,
+              createdAt: fetchedSurveyData.createdAt.toDate(),
+              updatedAt: fetchedSurveyData.updatedAt.toDate(),
+            };
+            setSurvey(processedSurvey);
+
+            // Transform optionCounts into Answer[] for SurveyStatsDisplay
+            let transformedAnswers: Answer[] = [];
+            if (processedSurvey.questions && processedSurvey.questions.length > 0 && processedSurvey.optionCounts) {
+              const firstQuestion = processedSurvey.questions[0]; // Assuming single-card survey structure for now
+              if (firstQuestion && (firstQuestion.type === 'multiple-choice' || firstQuestion.type === 'rating')) {
+                Object.entries(processedSurvey.optionCounts).forEach(([optionValue, count]) => {
+                  for (let i = 0; i < count; i++) {
+                    transformedAnswers.push({ questionId: firstQuestion.id, value: optionValue });
+                  }
+                });
+              }
+            }
+            setAnswers(transformedAnswers);
+
+          } else {
+            setSurvey(null); // Survey not found
+          }
+        } catch (error) {
+          console.error("Error fetching survey statistics:", error);
+          setSurvey(null);
+        } finally {
+          setDataLoading(false);
+        }
+      };
+      fetchSurveyStats();
     } else if (!authLoading && !user) {
-      // If not logged in and auth is resolved, no need to load data
-      setDataLoading(false);
+      setDataLoading(false); // Not logged in, no data to load
     }
   }, [surveyId, user, authLoading]);
 
-  if (authLoading || (user && dataLoading)) { // Show loading if auth is loading OR (user exists AND data is loading)
-    return <div className="text-center py-10">Loading survey statistics...</div>;
+  if (authLoading || (user && dataLoading)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="mt-4 text-lg text-muted-foreground">Loading survey statistics...</p>
+      </div>
+    );
   }
 
-  if (!user) {
-     return <div className="text-center py-10">Redirecting to login...</div>;
+  if (!user && !authLoading) {
+     return (
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)]">
+            <ShieldAlert className="h-12 w-12 text-destructive" />
+            <p className="mt-4 text-lg text-center">Redirecting to login...</p>
+        </div>
+     );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] text-center">
+        <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
+        <h1 className="text-2xl font-bold text-destructive">Access Denied</h1>
+        <p className="text-muted-foreground mt-2">You do not have permission to view these statistics.</p>
+        <button onClick={() => router.push('/dashboard')} className="mt-6 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+          Go to Dashboard
+        </button>
+      </div>
+    );
   }
 
   if (!survey) {
-    return <div className="text-center py-10">Survey statistics not found or you do not have permission to view them.</div>;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-8rem)] text-center">
+        <ShieldAlert className="h-16 w-16 text-destructive mb-4" />
+        <h1 className="text-2xl font-bold text-destructive">Survey Not Found</h1>
+        <p className="text-muted-foreground mt-2">The requested survey statistics could not be found or loaded.</p>
+         <button onClick={() => router.push('/dashboard')} className="mt-6 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+          Go to Dashboard
+        </button>
+      </div>
+    );
   }
 
   return (
