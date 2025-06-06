@@ -1,12 +1,10 @@
-
 // @/context/SurveyCreationContext.tsx
 "use client";
 
 import type { Survey, Question } from '@/types';
 import React, { createContext, useContext, useState, ReactNode, Dispatch, SetStateAction, useCallback } from 'react';
 import * as z from "zod";
-import { db } from '@/lib/firebase';
-import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { surveyService } from '@/services/surveyService'; // Import surveyService
 import { useToast } from '@/hooks/use-toast';
 
 const questionSchema = z.object({
@@ -20,11 +18,11 @@ const questionSchema = z.object({
 export type SurveyQuestionContext = z.infer<typeof questionSchema>;
 
 export type SurveyCreationData = {
-  id?: string; // ID of the survey if editing
+  id?: string; 
   surveyType: "single-card";
   title?: string;
   description: string;
-  privacy?: "Public"; // Single-card surveys are public
+  privacy?: "Public"; 
   questions: Array<SurveyQuestionContext>;
   responses?: number;
   optionCounts?: Record<string, number>;
@@ -73,12 +71,9 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
   const loadSurveyForEditing = useCallback(async (surveyId: string, currentUserId?: string): Promise<boolean> => {
     setIsLoadingSurveyForEdit(true);
     try {
-      const surveyRef = doc(db, "surveys", surveyId);
-      const surveySnap = await getDoc(surveyRef);
+      const fetchedSurvey = await surveyService.fetchSurveyById(surveyId);
 
-      if (surveySnap.exists()) {
-        const fetchedSurvey = surveySnap.data() as Survey;
-
+      if (fetchedSurvey) {
         if (fetchedSurvey.createdBy !== currentUserId) {
           toast({ title: "Access Denied", description: "You do not have permission to edit this survey.", variant: "destructive" });
           setIsLoadingSurveyForEdit(false);
@@ -91,15 +86,15 @@ export function SurveyCreationProvider({ children }: { children: ReactNode }) {
         }
 
         setSurveyData({
-          id: surveySnap.id,
+          id: fetchedSurvey.id,
           surveyType: fetchedSurvey.surveyType || "single-card",
           title: fetchedSurvey.title || "",
           description: fetchedSurvey.description || "",
-          privacy: "Public", // single-card are always public
+          privacy: "Public",
           questions: fetchedSurvey.questions ? fetchedSurvey.questions.map(q => ({
             id: q.id || `q_${new Date().getTime()}_${Math.random().toString(36).substring(2, 7)}`,
             text: q.text,
-            type: q.type as "multiple-choice",
+            type: q.type as "multiple-choice", // Assuming only multiple-choice for single-card creation
             options: q.options || ["", ""],
           })) : [getDefaultQuestion()],
           responses: fetchedSurvey.responses ?? 0,

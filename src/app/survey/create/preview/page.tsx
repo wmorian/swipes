@@ -1,4 +1,3 @@
-
 // @/app/survey/create/preview/page.tsx
 "use client";
 
@@ -18,8 +17,8 @@ import SurveyCard from "@/components/survey/SurveyCard";
 import type { Question as SurveyCardQuestion, Survey } from "@/types";
 import { ArrowLeft, CheckCircle, ChevronDown, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { db, serverTimestamp } from "@/lib/firebase";
-import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
+import { surveyService } from '@/services/surveyService'; // Import surveyService
+import { serverTimestamp } from 'firebase/firestore'; // Keep for serverTimestamp
 
 export default function CreateSurveyPreviewPage() {
   const { user, loading: authLoading } = useAuth();
@@ -83,15 +82,17 @@ export default function CreateSurveyPreviewPage() {
 
     const finalDescription = surveyData.description || "";
 
+    // The Survey type from types/index.ts might need adjustment if it expects Date objects for createdAt/updatedAt
+    // For Firestore, we use serverTimestamp(). The service handles this.
     const surveyPayload: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt?: any, updatedAt: any } = {
-        title: "", // Single-card surveys don't use a main title
+        title: "", 
         description: finalDescription,
         surveyType: "single-card",
         questions: surveyData.questions,
         questionCount: 1,
         responses: surveyData.responses ?? 0,
         status: statusToSet,
-        privacy: 'Public', // Single cards are public
+        privacy: 'Public', 
         createdBy: user.id,
         optionCounts: surveyData.optionCounts ??
                       surveyData.questions[0].options.reduce((acc, option) => {
@@ -99,23 +100,23 @@ export default function CreateSurveyPreviewPage() {
                         return acc;
                       }, {} as Record<string, number>),
         skipCount: surveyData.skipCount ?? 0,
-        updatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(), // Firestore server timestamp
     };
+    if (!surveyData.id) { // Only add createdAt for new surveys
+        surveyPayload.createdAt = serverTimestamp();
+    }
+
 
     try {
-      let finalizedSurveyId = surveyData.id;
+      const finalizedSurveyId = await surveyService.finalizeSurvey(surveyPayload, surveyData.id);
+      
       let toastTitle = "";
       let toastDescription = "";
 
-      if (finalizedSurveyId) { // Editing existing draft
-        const surveyRef = doc(db, "surveys", finalizedSurveyId);
-        await updateDoc(surveyRef, surveyPayload);
+      if (surveyData.id) { // Editing existing draft
         toastTitle = statusToSet === 'Active' ? "Draft Published!" : "Draft Updated!";
         toastDescription = `Your survey card has been ${statusToSet === 'Active' ? 'published' : 'updated'}. ID: ${finalizedSurveyId}`;
       } else { // Creating new survey
-        surveyPayload.createdAt = serverTimestamp();
-        const docRef = await addDoc(collection(db, "surveys"), surveyPayload);
-        finalizedSurveyId = docRef.id;
         toastTitle = statusToSet === 'Active' ? "Survey Card Published!" : "Survey Card Saved as Draft!";
         toastDescription = `Your single card survey has been ${statusToSet === 'Active' ? 'published' : 'saved'}. ID: ${finalizedSurveyId}`;
       }

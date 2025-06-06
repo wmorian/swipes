@@ -4,10 +4,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import SurveyStatsDisplay from '@/components/survey/SurveyStatsDisplay';
-import type { Survey, Answer, Question } from '@/types';
+import type { Survey, Answer } from '@/types'; // Removed Question as it's part of Survey
 import { useAuth } from '@/context/AuthContext';
-import { db, type Timestamp } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { surveyService } from '@/services/surveyService'; // Import surveyService
 import { Loader2, ShieldAlert } from 'lucide-react';
 
 export default function SurveyStatsPage() {
@@ -17,7 +16,7 @@ export default function SurveyStatsPage() {
   const surveyId = params.id as string;
 
   const [survey, setSurvey] = useState<Survey | null>(null);
-  const [answers, setAnswers] = useState<Answer[]>([]); // Transformed from survey.optionCounts
+  const [answers, setAnswers] = useState<Answer[]>([]); 
   const [dataLoading, setDataLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
 
@@ -33,33 +32,23 @@ export default function SurveyStatsPage() {
         setDataLoading(true);
         setAccessDenied(false);
         try {
-          const surveyRef = doc(db, "surveys", surveyId);
-          const surveySnap = await getDoc(surveyRef);
+          const fetchedSurvey = await surveyService.fetchSurveyById(surveyId);
 
-          if (surveySnap.exists()) {
-            const fetchedSurveyData = surveySnap.data() as Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: Timestamp, updatedAt: Timestamp };
-            
-            if (fetchedSurveyData.createdBy !== user.id) {
+          if (fetchedSurvey) {
+            if (fetchedSurvey.createdBy !== user.id) {
               setAccessDenied(true);
               setSurvey(null);
               setDataLoading(false);
               return;
             }
             
-            const processedSurvey: Survey = {
-              id: surveySnap.id,
-              ...fetchedSurveyData,
-              createdAt: fetchedSurveyData.createdAt.toDate(),
-              updatedAt: fetchedSurveyData.updatedAt.toDate(),
-            };
-            setSurvey(processedSurvey);
+            setSurvey(fetchedSurvey);
 
-            // Transform optionCounts into Answer[] for SurveyStatsDisplay
             let transformedAnswers: Answer[] = [];
-            if (processedSurvey.questions && processedSurvey.questions.length > 0 && processedSurvey.optionCounts) {
-              const firstQuestion = processedSurvey.questions[0]; // Assuming single-card survey structure for now
+            if (fetchedSurvey.questions && fetchedSurvey.questions.length > 0 && fetchedSurvey.optionCounts) {
+              const firstQuestion = fetchedSurvey.questions[0]; 
               if (firstQuestion && (firstQuestion.type === 'multiple-choice' || firstQuestion.type === 'rating')) {
-                Object.entries(processedSurvey.optionCounts).forEach(([optionValue, count]) => {
+                Object.entries(fetchedSurvey.optionCounts).forEach(([optionValue, count]) => {
                   for (let i = 0; i < count; i++) {
                     transformedAnswers.push({ questionId: firstQuestion.id, value: optionValue });
                   }
@@ -69,7 +58,7 @@ export default function SurveyStatsPage() {
             setAnswers(transformedAnswers);
 
           } else {
-            setSurvey(null); // Survey not found
+            setSurvey(null); 
           }
         } catch (error) {
           console.error("Error fetching survey statistics:", error);
@@ -80,7 +69,7 @@ export default function SurveyStatsPage() {
       };
       fetchSurveyStats();
     } else if (!authLoading && !user) {
-      setDataLoading(false); // Not logged in, no data to load
+      setDataLoading(false); 
     }
   }, [surveyId, user, authLoading]);
 

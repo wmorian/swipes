@@ -1,119 +1,94 @@
 // @/context/AuthContext.tsx
 "use client";
 
-import type { User as AppUser } from '@/types';
+import type { User } from '@/types'; // Standardized User type
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { 
-  getAuth, 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut as firebaseSignOut,
-  updateProfile,
-  type User as FirebaseUser 
-} from 'firebase/auth';
-import { auth } from '@/lib/firebase'; // Import initialized auth from firebase.ts
+import { authService } from '@/services/authService';
+import type { User as FirebaseUser } from 'firebase/auth'; // Keep FirebaseUser for service layer interactions
 
 interface AuthContextType {
-  user: AppUser | null;
+  user: User | null;
   login: (email: string, pass: string) => Promise<void>;
   signup: (email: string, pass: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateUser: (updatedProfileData: Partial<Pick<AppUser, 'name' | 'avatarUrl'>>) => Promise<void>;
+  updateUser: (updatedProfileData: Partial<Pick<User, 'name' | 'avatarUrl'>>) => Promise<void>;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AppUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
-      if (firebaseUser) {
-        const appUser: AppUser = {
-          id: firebaseUser.uid,
-          email: firebaseUser.email || "", // Firebase email can be null
-          name: firebaseUser.displayName || undefined,
-          avatarUrl: firebaseUser.photoURL || undefined,
-        };
-        setUser(appUser);
-      } else {
-        setUser(null);
-      }
+    setLoading(true);
+    const unsubscribe = authService.onAuthUserChanged((appUser: User | null) => {
+      setUser(appUser);
       setLoading(false);
     });
-
-    return () => unsubscribe(); // Cleanup subscription on unmount
+    return () => unsubscribe();
   }, []);
 
   const login = async (email: string, pass: string): Promise<void> => {
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
-      // Auth state change will be handled by onAuthStateChanged
+      await authService.loginUser(email, pass);
+      // Auth state change handled by onAuthUserChanged
     } catch (error) {
-      setLoading(false);
-      throw error; // Re-throw error to be caught by UI
+      setLoading(false); // Ensure loading is reset on error before re-throwing
+      throw error;
     }
-    // setLoading(false) will be handled by onAuthStateChanged listener
+    // setLoading(false) will be handled by onAuthUserChanged
   };
 
   const signup = async (email: string, pass: string, name: string): Promise<void> => {
     setLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-      if (userCredential.user) {
-        await updateProfile(userCredential.user, {
-          displayName: name,
-        });
-        // Refresh user state or let onAuthStateChanged handle it
-        // For immediate UI update reflecting name:
-        setUser(prevUser => prevUser ? {...prevUser, name} : {
-            id: userCredential.user.uid,
-            email: userCredential.user.email || "",
-            name: name,
-            avatarUrl: undefined
-        });
-      }
+      const firebaseUser = await authService.signupUser(email, pass, name);
+      // Update local state immediately if needed, though onAuthUserChanged will also fire.
+      // This provides a slightly faster UI update for name if signup is successful.
+      setUser({
+        id: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        name: name,
+        avatarUrl: firebaseUser.photoURL || undefined,
+      });
     } catch (error) {
       setLoading(false);
       throw error;
     }
-    // setLoading(false) will be handled by onAuthStateChanged listener
+    // setLoading(false) handled by onAuthUserChanged
   };
   
   const logout = async (): Promise<void> => {
     setLoading(true);
     try {
-      await firebaseSignOut(auth);
-      // Auth state change will set user to null via onAuthStateChanged
+      await authService.logoutUser();
+      // Auth state change handled by onAuthUserChanged
     } catch (error) {
       console.error("Error signing out: ", error);
-      // Even if sign out fails, we might want to clear local state or show error
-      setLoading(false); // Ensure loading is reset if error
+      setLoading(false);
       throw error;
     }
   };
 
-  const updateUser = async (updatedProfileData: Partial<Pick<AppUser, 'name' | 'avatarUrl'>>): Promise<void> => {
-    if (!auth.currentUser) {
-      throw new Error("No user currently signed in.");
+  const updateUser = async (updatedProfileData: Partial<Pick<User, 'name' | 'avatarUrl'>>): Promise<void> => {
+    const currentFirebaseUser = (await new Promise<FirebaseUser | null>((resolve) => {
+        const unsubscribe = authService.onAuthUserChanged(user => {
+            unsubscribe(); // Unsubscribe after getting the current user
+            resolve(user ? ({ uid: user.id, email: user.email, displayName: user.name, photoURL: user.avatarUrl } as unknown as FirebaseUser) : null);
+        });
+    }));
+
+
+    if (!currentFirebaseUser) { // Check against the actual current Firebase auth state
+      throw new Error("No user currently signed in or auth state not yet available.");
     }
     setLoading(true);
     try {
-      const profileUpdates: { displayName?: string; photoURL?: string } = {};
-      if (updatedProfileData.name !== undefined) {
-        profileUpdates.displayName = updatedProfileData.name;
-      }
-      if (updatedProfileData.avatarUrl !== undefined) {
-        profileUpdates.photoURL = updatedProfileData.avatarUrl;
-      }
+      await authService.updateUserProfile(currentFirebaseUser, updatedProfileData);
       
-      await updateProfile(auth.currentUser, profileUpdates);
-      
-      // Update local user state to reflect changes immediately
       setUser(prevUser => {
         if (!prevUser) return null;
         return {
@@ -123,10 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       });
     } catch (error) {
-      setLoading(false);
-      throw error;
+      // Error already logged by service or calling component
     } finally {
-      setLoading(false); // Ensure loading is reset
+      setLoading(false);
     }
   };
 

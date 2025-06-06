@@ -1,4 +1,3 @@
-
 // @/components/dashboard/DashboardClient.tsx
 "use client";
 
@@ -31,10 +30,8 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import type { Survey } from '@/types';
-import { db, type Timestamp } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { surveyService } from '@/services/surveyService'; // Import surveyService
 import { useToast } from '@/hooks/use-toast';
-
 
 // Mock data for activity - this can be replaced with real data later
 const mockActivity = [
@@ -68,18 +65,7 @@ export default function DashboardClient() {
   const fetchDashboardData = async (userId: string) => {
     setDataLoading(true);
     try {
-      const surveysCol = collection(db, "surveys");
-      const q = query(surveysCol, where("createdBy", "==", userId), orderBy("createdAt", "desc"));
-      const surveySnapshot = await getDocs(q);
-      const fetchedSurveys = surveySnapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        return {
-          id: docSnap.id,
-          ...data,
-          createdAt: (data.createdAt as Timestamp)?.toDate ? (data.createdAt as Timestamp).toDate() : data.createdAt,
-          updatedAt: (data.updatedAt as Timestamp)?.toDate ? (data.updatedAt as Timestamp).toDate() : data.updatedAt,
-        } as Survey;
-      });
+      const fetchedSurveys = await surveyService.fetchSurveysByCreator(userId);
       setSurveys(fetchedSurveys);
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -92,7 +78,7 @@ export default function DashboardClient() {
   const formatRelativeTime = (dateInput: string | Date) => {
     if (!dateInput) return 'Unknown date';
     const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-    if (isNaN(date.getTime())) return 'Invalid date';
+    if (isNaN(date.getTime())) return 'Invalid date'; // Check if date is valid
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
@@ -114,7 +100,7 @@ export default function DashboardClient() {
     }
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, "surveys", surveyToDelete.id));
+      await surveyService.deleteSurveyDraft(surveyToDelete.id);
       setSurveys(prevSurveys => prevSurveys.filter(s => s.id !== surveyToDelete.id));
       toast({ title: "Draft Deleted", description: `Draft survey "${getSurveyTitle(surveyToDelete)}" has been deleted.`, variant: "default" });
     } catch (error) {

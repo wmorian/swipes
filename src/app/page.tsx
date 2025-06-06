@@ -1,4 +1,3 @@
-
 // @/app/page.tsx
 "use client";
 
@@ -10,22 +9,9 @@ import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
 import { ArrowRight, RefreshCw, Loader2, SlidersHorizontal, Filter } from 'lucide-react';
-import { db, serverTimestamp, increment, type Timestamp } from '@/lib/firebase';
-import { 
-  collection, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy, 
-  doc, 
-  updateDoc, 
-  getDoc,
-  addDoc,
-  QueryConstraint
-} from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
+import { surveyService } from '@/services/surveyService'; // Import surveyService
 
 type FilterType = 'not-responded' | 'responded' | 'skipped';
 
@@ -50,55 +36,23 @@ export default function HomePage() {
       if (!isManualRefresh) setIsLoading(false);
       return;
     }
-    // Only set global loading if it's not a manual refresh, or if it is a manual refresh but we're already in a loading state (e.g. initial page load)
     if (!isManualRefresh || (isManualRefresh && isLoading)) {
       setIsLoading(true);
-    } else {
+    } else if (isManualRefresh) {
+      setIsRefreshingCards(true); // For button spinner
       setCurrentCardIndex(0); 
       setStatsForCard(null);
       setUserInitialSelection(undefined);
     }
     
     try {
-      const surveysCol = collection(db, "surveys");
-      const surveyQueryConstraints: QueryConstraint[] = [
-        where("privacy", "==", "Public"), 
-        where("surveyType", "==", "single-card"),
-        where("status", "==", "Active"),
-        orderBy("createdAt", "desc"),
-      ];
-      const surveySnapshot = await getDocs(query(surveysCol, ...surveyQueryConstraints));
-      const fetchedSurveys = surveySnapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        return {
-          id: docSnap.id,
-          ...data,
-          createdAt: (data.createdAt as Timestamp)?.toDate(),
-          updatedAt: (data.updatedAt as Timestamp)?.toDate(),
-        } as Survey;
-      });
+      const fetchedSurveys = await surveyService.fetchPublicSurveyCards();
       setPublicCards(fetchedSurveys);
 
       if (user && fetchedSurveys.length > 0) {
         const surveyIds = fetchedSurveys.map(s => s.id);
-        if (surveyIds.length > 0) { 
-          const interactionsQuery = query(
-            collection(db, "userSurveyAnswers"),
-            where("userId", "==", user.id),
-            where("surveyId", "in", surveyIds)
-          );
-          const interactionsSnapshot = await getDocs(interactionsQuery);
-          const interactionsMap: Record<string, UserSurveyAnswer & { docId: string }> = {};
-          interactionsSnapshot.forEach(docSnap => {
-            interactionsMap[docSnap.data().surveyId] = { 
-              ...(docSnap.data() as UserSurveyAnswer), 
-              docId: docSnap.id 
-            };
-          });
-          setUserCardInteractions(interactionsMap);
-        } else {
-           setUserCardInteractions({});
-        }
+        const interactionsMap = await surveyService.fetchUserInteractionsForSurveyCards(user.id, surveyIds);
+        setUserCardInteractions(interactionsMap);
       } else {
         setUserCardInteractions({});
       }
@@ -109,6 +63,9 @@ export default function HomePage() {
     } finally {
       if (!isManualRefresh || (isManualRefresh && isLoading)) { 
         setIsLoading(false);
+      }
+      if (isManualRefresh) {
+        setIsRefreshingCards(false);
       }
     }
   };
@@ -168,98 +125,30 @@ export default function HomePage() {
     if (!user) return { updatedSurveyForStats: currentSurvey, interactionProcessed: false };
 
     const existingUserInteraction = userCardInteractions[currentSurvey.id];
-    const surveyRef = doc(db, "surveys", currentSurvey.id);
-    let finalSurveyUpdates: Record<string, any> = { updatedAt: serverTimestamp() };
-    let actualSurveyStatChangesMade = false;
-
-    const previousAnswerValue = existingUserInteraction?.answerValue;
-    const wasPreviouslySkipped = existingUserInteraction?.isSkipped ?? false; 
-
-    const isCurrentlySkipped = interactionType === 'skip';
-    const currentAnswerValue = isCurrentlySkipped ? undefined : submittedAnswer;
     
-    if (!existingUserInteraction) { 
-      if (isCurrentlySkipped) {
-        finalSurveyUpdates.skipCount = increment(1);
-      } else { 
-        finalSurveyUpdates.responses = increment(1);
-        if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
-          finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
-        }
-      }
-      actualSurveyStatChangesMade = true;
-    } else { 
-      if (wasPreviouslySkipped) { 
-        if (!isCurrentlySkipped) { 
-          finalSurveyUpdates.skipCount = increment(-1); 
-          finalSurveyUpdates.responses = increment(1);
-          if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
-            finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
-          }
-          actualSurveyStatChangesMade = true;
-        }
-      } else { // Was previously answered
-        if (isCurrentlySkipped) { 
-          finalSurveyUpdates.responses = increment(-1); 
-          if (previousAnswerValue && typeof previousAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
-            finalSurveyUpdates[`optionCounts.${previousAnswerValue}`] = increment(-1);
-          }
-          finalSurveyUpdates.skipCount = increment(1);
-          actualSurveyStatChangesMade = true;
-        } else if (currentAnswerValue !== previousAnswerValue) { // Answer changed
-          if (previousAnswerValue && typeof previousAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(previousAnswerValue)) {
-            finalSurveyUpdates[`optionCounts.${previousAnswerValue}`] = increment(-1);
-          }
-          if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
-            finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
-          }
-          actualSurveyStatChangesMade = true; 
-        }
-      }
-    }
-    
-    let updatedSurveyForStats: Survey = currentSurvey;
-
     try {
-      if (Object.keys(finalSurveyUpdates).length > 1 || actualSurveyStatChangesMade) {
-          await updateDoc(surveyRef, finalSurveyUpdates);
-      }
-      
-      const interactionData: Omit<UserSurveyAnswer, 'id' | 'answeredAt'> & { answeredAt: any } = {
+      const result = await surveyService.recordUserInteractionAndUpdateStats({
         userId: user.id,
-        surveyId: currentSurvey.id,
+        survey: currentSurvey, // Pass the whole survey object
         questionId: currentQuestion.id,
-        answerValue: currentAnswerValue !== undefined ? currentAnswerValue : null,
-        isSkipped: isCurrentlySkipped,
-        answeredAt: serverTimestamp(),
-      };
+        currentAnswerValue: interactionType === 'skip' ? undefined : submittedAnswer,
+        isCurrentlySkipped: interactionType === 'skip',
+        existingInteraction: existingUserInteraction,
+      });
 
-      const newInteractionForLocalState = { ...interactionData, answeredAt: new Date() };
-      let newDocId = existingUserInteraction?.docId;
-
-      if (existingUserInteraction?.docId) {
-        await updateDoc(doc(db, "userSurveyAnswers", existingUserInteraction.docId), interactionData);
-      } else {
-        newDocId = (await addDoc(collection(db, "userSurveyAnswers"), interactionData)).id;
-      }
-      
-      setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocId! }}));
-      
-      if (actualSurveyStatChangesMade) { 
-        const updatedSurveyDoc = await getDoc(surveyRef);
-        if (updatedSurveyDoc.exists()) {
-            const data = updatedSurveyDoc.data();
-            updatedSurveyForStats = {
-              id: updatedSurveyDoc.id, ...data,
-              createdAt: (data.createdAt as Timestamp)?.toDate(),
-              updatedAt: (data.updatedAt as Timestamp)?.toDate(),
-            } as Survey;
-            setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedSurveyForStats : card));
+      if (result.interactionProcessed) {
+        // Update local state for userCardInteractions
+        const updatedInteractionData = await surveyService.fetchUserInteractionsForSurveyCards(user.id, [currentSurvey.id]);
+        if (updatedInteractionData[currentSurvey.id]) {
+          setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: updatedInteractionData[currentSurvey.id] }));
         }
+        
+        // Update local publicCards with the potentially updated survey (e.g., counts)
+        setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? result.updatedSurveyForStats : card));
       }
-      return { updatedSurveyForStats, interactionProcessed: true };
+      return result;
     } catch (error) {
-      console.error("Error in processCardInteraction:", error);
+      console.error("Error in processCardInteraction (page):", error);
       return { updatedSurveyForStats: currentSurvey, interactionProcessed: false };
     }
   };
@@ -275,11 +164,12 @@ export default function HomePage() {
     }
 
     if (submittedAnswer === undefined) { 
+        // This path should ideally not be hit if SurveyCard directly calls onNext with selectedValue
+        // and skip has its own handler. But as a fallback:
         await processCardInteraction(currentSurvey, currentQuestion, 'skip'); 
         setStatsForCard(null); 
         setUserInitialSelection(undefined);
-        // No proceedToNextCard() here; stats view for skips is not typical
-        // or if it is, it should be handled by the caller (e.g., if a skip button shows stats)
+        proceedToNextCard(); // Proceed after skip if no stats are shown for skips.
         return;
     }
 
@@ -295,7 +185,6 @@ export default function HomePage() {
     setUserInitialSelection(undefined);
 
     if (selectedFilter === 'responded') {
-        // If viewing answered cards, "skip" just means go to the next one without re-processing.
         proceedToNextCard();
         return;
     }
@@ -321,12 +210,7 @@ export default function HomePage() {
   };
   
   const resetCardView = async () => {
-    setIsRefreshingCards(true);
-    try {
-      await fetchSurveyData(true); 
-    } finally {
-      setIsRefreshingCards(false);
-    }
+    await fetchSurveyData(true); 
   };
 
   const handleFilterChange = (value: string) => {
@@ -346,7 +230,7 @@ export default function HomePage() {
   
   const renderPageContent = () => {
     if (statsForCard) {
-      const cardToDisplayStats = statsForCard;
+      const cardToDisplayStats = statsForCard; // This should be the updated survey from processCardInteraction
       const questionText = cardToDisplayStats.questions?.[0]?.text || "Survey Question";
       const totalResponses = cardToDisplayStats.responses || 0;
       const totalSkips = cardToDisplayStats.skipCount || 0;
@@ -516,12 +400,3 @@ export default function HomePage() {
     </div>
   );
 }
-    
-
-    
-
-
-
-    
-
-
