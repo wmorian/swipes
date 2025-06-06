@@ -3,7 +3,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Layers, Home, PlusSquare, LayoutDashboard, LogIn } from 'lucide-react';
+import { Layers, Home, PlusSquare, LayoutDashboard, LogIn, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import UserNav from './UserNav';
 import { useAuth } from '@/context/AuthContext';
@@ -24,6 +24,7 @@ export default function Header() {
           <Button variant="ghost" asChild>
             <Link href="/dashboard" className="flex items-center gap-1"> <LayoutDashboard size={18} /> Dashboard </Link>
           </Button>
+          {/* Desktop create button can remain or also trigger global FAB, for now keeping it as direct link */}
           <Button variant="ghost" asChild>
             <Link href="/survey/create/questions" className="flex items-center gap-1"> <PlusSquare size={18} /> Create Survey </Link>
           </Button>
@@ -54,9 +55,14 @@ export default function Header() {
   const mobileBottomNavItems = [
     { href: "/", icon: Home, label: "Home", authRequired: false },
     { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", authRequired: true },
-    { href: "/survey/create/questions", icon: PlusSquare, label: "Create", authRequired: true },
+    // { href: "/survey/create/questions", icon: PlusSquare, label: "Create", authRequired: true }, // Create is now handled by Global FAB
   ];
-  const mobileLoginNavItem = { href: "/login", icon: LogIn, label: "Login", authRequired: false };
+  // Add profile if user is logged in, or login if not
+  if (user) {
+    mobileBottomNavItems.push({ href: "/profile", icon: UserCircle, label: "Profile", authRequired: true });
+  } else {
+    mobileBottomNavItems.push({ href: "/login", icon: LogIn, label: "Login", authRequired: false });
+  }
 
 
   return (
@@ -86,32 +92,23 @@ export default function Header() {
         {mobileBottomNavItems.map(item => {
           if (item.authRequired && !user) return null;
           const IconComponent = item.icon;
-          const isActive = item.href === "/survey/create/questions" ? pathname.startsWith(item.href) : pathname === item.href;
+          const isActive = (item.href === "/" && pathname === "/") || 
+                           (item.href !== "/" && pathname.startsWith(item.href));
           return (
-            <Link key={item.href} href={item.href} passHref className="flex-1 flex justify-center">
-              <Button
-                variant="ghost"
-                size="lg"
-                className={`w-full h-full ${isActive ? 'text-primary' : 'text-muted-foreground'} [&_svg]:h-7 [&_svg]:w-7`}
-                aria-label={item.label}
-              >
-                <IconComponent />
-              </Button>
+            <Link key={item.href} href={item.href} passHref legacyBehavior>
+              <a className="flex-1 flex justify-center items-center">
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  className={`w-full h-full ${isActive ? 'text-primary' : 'text-muted-foreground'} [&_svg]:h-7 [&_svg]:w-7`}
+                  aria-label={item.label}
+                >
+                  <IconComponent />
+                </Button>
+              </a>
             </Link>
           );
         })}
-        {!user && (
-           <Link href={mobileLoginNavItem.href} passHref className="flex-1 flex justify-center">
-             <Button
-                variant="ghost"
-                size="lg"
-                className={`w-full h-full ${pathname === mobileLoginNavItem.href ? 'text-primary' : 'text-muted-foreground'} [&_svg]:h-7 [&_svg]:w-7`}
-                aria-label={mobileLoginNavItem.label}
-              >
-               <mobileLoginNavItem.icon />
-             </Button>
-           </Link>
-        )}
       </nav>
     </>
   );
