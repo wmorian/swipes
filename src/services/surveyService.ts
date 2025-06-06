@@ -20,6 +20,7 @@ import {
   deleteDoc,
   type QueryConstraint,
   limit,
+  writeBatch,
 } from 'firebase/firestore';
 import type { Survey, UserSurveyAnswer, Question, SurveyCreationData } from '@/types';
 import { generateDailyPoll } from '@/ai/flows/generate-daily-poll-flow';
@@ -44,7 +45,8 @@ export const surveyService = {
       where('privacy', '==', 'Public'),
       where('surveyType', '==', 'single-card'),
       where('status', '==', 'Active'),
-      // Removed: where('isDailyPoll', '!=', true), // Daily poll will now be included
+      // Daily poll is now included by default by removing the 'isDailyPoll != true' filter.
+      // Order by createdAt to usually get the daily poll first among new cards.
       orderBy('createdAt', 'desc'),
     ];
     const surveySnapshot = await getDocs(query(surveysCol, ...surveyQueryConstraints));
@@ -248,19 +250,39 @@ export const surveyService = {
       } as Survey;
     }
 
-    // If no recent daily poll, generate a new one
+    // If no recent daily poll, first demote any older ones, then generate a new one
     try {
+      // Demote older daily polls
+      const oldPollsQuery = query(
+        surveysCol,
+        where('isDailyPoll', '==', true),
+        where('status', '==', 'Active')
+        // We don't need createdAt < twentyFourHoursAgo here, because if it was >=, the first query would have caught it.
+        // This query finds ANY active poll still marked as daily.
+      );
+      const oldPollsSnapshot = await getDocs(oldPollsQuery);
+      if (!oldPollsSnapshot.empty) {
+        const batch = writeBatch(db);
+        oldPollsSnapshot.forEach(pollDoc => {
+          const pollRef = doc(db, 'surveys', pollDoc.id);
+          batch.update(pollRef, { isDailyPoll: false, updatedAt: serverTimestamp() });
+        });
+        await batch.commit();
+        console.log(`Demoted ${oldPollsSnapshot.size} old daily poll(s).`);
+      }
+
+      // Generate new poll content
       const pollContent = await generateDailyPoll();
       const optionCounts: Record<string, number> = {};
       pollContent.options.forEach(opt => optionCounts[opt] = 0);
 
       const newPollData: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: FieldValue, updatedAt: FieldValue } = {
-        title: "Today's Poll", // This title is used if survey.description is not present for the card.
-        description: pollContent.questionText, // Use question as description for card UI.
+        title: "Today's Poll", 
+        description: pollContent.questionText, 
         surveyType: 'single-card',
         questions: [{
           id: `dp_q_${Date.now()}`,
-          text: pollContent.questionText, // Also store it in questions array.
+          text: pollContent.questionText,
           type: 'multiple-choice',
           options: pollContent.options,
         }],
@@ -286,7 +308,7 @@ export const surveyService = {
       }
       return null;
     } catch (error) {
-      console.error("Error generating or creating daily poll:", error);
+      console.error("Error in fetchOrCreateDailyPoll (demoting old or creating new):", error);
       return null;
     }
   },
