@@ -104,25 +104,27 @@ export default function CreateSurveyPreviewPage() {
 
     try {
       let finalizedSurveyId = surveyData.id;
+      let toastTitle = "";
+      let toastDescription = "";
 
-      if (finalizedSurveyId) {
+      if (finalizedSurveyId) { // Editing existing draft
         const surveyRef = doc(db, "surveys", finalizedSurveyId);
         await updateDoc(surveyRef, surveyPayload);
-        toast({
-          title: statusToSet === 'Active' ? "Survey Card Published!" : "Draft Updated!",
-          description: `Your survey card has been ${statusToSet === 'Active' ? 'published' : 'updated'}. ID: ${finalizedSurveyId}`,
-          variant: "default"
-        });
-      } else {
+        toastTitle = statusToSet === 'Active' ? "Draft Published!" : "Draft Updated!";
+        toastDescription = `Your survey card has been ${statusToSet === 'Active' ? 'published' : 'updated'}. ID: ${finalizedSurveyId}`;
+      } else { // Creating new survey
         surveyPayload.createdAt = serverTimestamp();
         const docRef = await addDoc(collection(db, "surveys"), surveyPayload);
         finalizedSurveyId = docRef.id;
-        toast({
-          title: statusToSet === 'Active' ? "Survey Card Published!" : "Survey Card Saved as Draft!",
-          description: `Your single card survey has been ${statusToSet === 'Active' ? 'published' : 'saved'}. ID: ${finalizedSurveyId}`,
-          variant: "default"
-        });
+        toastTitle = statusToSet === 'Active' ? "Survey Card Published!" : "Survey Card Saved as Draft!";
+        toastDescription = `Your single card survey has been ${statusToSet === 'Active' ? 'published' : 'saved'}. ID: ${finalizedSurveyId}`;
       }
+
+      toast({
+          title: toastTitle,
+          description: toastDescription,
+          variant: "default"
+      });
 
       setIsRedirectingAfterFinalize(true);
       resetSurveyCreation();
@@ -166,6 +168,9 @@ export default function CreateSurveyPreviewPage() {
   }
   const surveyCardQuestion = mapContextQuestionToSurveyCardQuestion(firstQuestion);
 
+  const mainButtonText = surveyData.id ? "Publish Draft" : "Publish";
+  const dropdownItemText = surveyData.id ? "Update Draft" : "Save as Draft";
+
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
@@ -183,7 +188,6 @@ export default function CreateSurveyPreviewPage() {
               onSkip={() => { /* Preview mode, no actual submission */ }}
               isLastQuestion={true}
               initialAnswer={undefined}
-              // No contextualMode needed for preview, always default behavior
             />
           ) : (
             <p className="text-center text-destructive">No question available for preview.</p>
@@ -194,28 +198,47 @@ export default function CreateSurveyPreviewPage() {
           <Button variant="outline" onClick={handleBack} disabled={isFinalizing}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isFinalizing || isRedirectingAfterFinalize}>
-                {isFinalizing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</> : (surveyData.id ? "Update Options" : "Finalize")}
-                <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => handleFinalizeSurvey('Active')}
-                disabled={isFinalizing || isRedirectingAfterFinalize}
-              >
-                <CheckCircle className="mr-2 h-4 w-4" /> {surveyData.id ? "Publish Draft" : "Publish"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleFinalizeSurvey('Draft')}
-                disabled={isFinalizing || isRedirectingAfterFinalize}
-              >
-                {surveyData.id ? "Update Draft" : "Save as Draft"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          
+          <div className="flex items-center">
+            <Button
+              onClick={() => handleFinalizeSurvey('Active')}
+              className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-r-none"
+              disabled={isFinalizing || isRedirectingAfterFinalize}
+            >
+              {isFinalizing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  {mainButtonText}
+                </>
+              )}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="default"
+                  size="icon"
+                  className="bg-accent hover:bg-accent/80 text-accent-foreground rounded-l-none border-l border-accent-foreground/20 px-2"
+                  disabled={isFinalizing || isRedirectingAfterFinalize}
+                  aria-label="More finalize options"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => handleFinalizeSurvey('Draft')}
+                  disabled={isFinalizing || isRedirectingAfterFinalize}
+                >
+                  {dropdownItemText}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </CardFooter>
     </Card>
   );
