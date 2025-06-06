@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
-import { ArrowRight, RefreshCw, Loader2, SlidersHorizontal, Star } from 'lucide-react';
+import { ArrowRight, RefreshCw, Loader2, Star } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { surveyService } from '@/services/surveyService'; 
@@ -20,13 +20,6 @@ export default function HomePage() {
   const { user, loading: authLoading } = useAuth(); 
   const router = useRouter();
   
-  const [dailyPoll, setDailyPoll] = useState<Survey | null>(null);
-  const [isLoadingDailyPoll, setIsLoadingDailyPoll] = useState(true);
-  const [statsForDailyPoll, setStatsForDailyPoll] = useState<Survey | null>(null);
-  const [userInitialSelectionForDailyPoll, setUserInitialSelectionForDailyPoll] = useState<string | undefined>(undefined);
-  const [userDailyPollInteraction, setUserDailyPollInteraction] = useState<(UserSurveyAnswer & { docId: string }) | null>(null);
-
-
   const [publicCards, setPublicCards] = useState<Survey[]>([]);
   const [displayedCards, setDisplayedCards] = useState<Survey[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -38,40 +31,21 @@ export default function HomePage() {
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
   const [isRefreshingCards, setIsRefreshingCards] = useState(false);
 
-  const fetchDailyPollData = async () => {
-    if (!user) {
-        setIsLoadingDailyPoll(false);
-        return;
-    }
-    setIsLoadingDailyPoll(true);
-    try {
-        const poll = await surveyService.fetchOrCreateDailyPoll();
-        setDailyPoll(poll);
-        if (poll && user) {
-            const interactions = await surveyService.fetchUserInteractionsForSurveyCards(user.id, [poll.id]);
-            setUserDailyPollInteraction(interactions[poll.id] || null);
-        }
-    } catch (error) {
-        console.error("Error fetching daily poll:", error);
-        setDailyPoll(null);
-    } finally {
-        setIsLoadingDailyPoll(false);
-    }
-  };
 
   const fetchSurveyData = async (isManualRefresh: boolean = false) => {
     if (!user) { 
       if (!isManualRefresh) setIsLoading(false);
       return;
     }
-    if (!isManualRefresh || (isManualRefresh && isLoading)) {
-      setIsLoading(true);
-    } else if (isManualRefresh) {
+
+    if (isManualRefresh) {
       setIsRefreshingCards(true); 
       setCurrentCardIndex(0); 
       setStatsForCard(null);
       setUserInitialSelection(undefined);
     }
+    // Initial setIsLoading(true) is handled by the main useEffect.
+    // This function's finally block will set setIsLoading(false) and isRefreshingCards(false).
     
     try {
       const fetchedSurveys = await surveyService.fetchPublicSurveyCards();
@@ -89,22 +63,28 @@ export default function HomePage() {
       setPublicCards([]);
       setUserCardInteractions({});
     } finally {
-      if (!isManualRefresh || (isManualRefresh && isLoading)) { 
-        setIsLoading(false);
-      }
       if (isManualRefresh) {
         setIsRefreshingCards(false);
       }
+      setIsLoading(false); // Handles both initial load and manual refresh completion
     }
   };
   
   useEffect(() => {
     if (!authLoading) {
       if (user) {
-        fetchDailyPollData();
-        fetchSurveyData(false); 
+        setIsLoading(true); // Start overall loading
+        surveyService.fetchOrCreateDailyPoll()
+          .then(() => {
+            return fetchSurveyData(false); // This will set isLoading to false in its finally block
+          })
+          .catch(error => {
+            console.error("Error in initial data setup (daily poll or survey fetch):", error);
+            setIsLoading(false); // Ensure loading is false on error
+          });
       } else {
         router.push('/login');
+        setIsLoading(false); 
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,12 +129,11 @@ export default function HomePage() {
     currentSurvey: Survey, 
     currentQuestion: Question,
     interactionType: 'answer' | 'skip', 
-    submittedAnswer?: any,
-    isDailyPollCard?: boolean
+    submittedAnswer?: any
   ): Promise<{ updatedSurveyForStats: Survey; interactionProcessed: boolean }> => {
     if (!user) return { updatedSurveyForStats: currentSurvey, interactionProcessed: false };
 
-    const existingInteraction = isDailyPollCard ? userDailyPollInteraction : userCardInteractions[currentSurvey.id];
+    const existingInteraction = userCardInteractions[currentSurvey.id];
     
     try {
       const result = await surveyService.recordUserInteractionAndUpdateStats({
@@ -169,13 +148,8 @@ export default function HomePage() {
       if (result.interactionProcessed) {
         const updatedInteractionData = await surveyService.fetchUserInteractionsForSurveyCards(user.id, [currentSurvey.id]);
         if (updatedInteractionData[currentSurvey.id]) {
-          if (isDailyPollCard) {
-            setUserDailyPollInteraction(updatedInteractionData[currentSurvey.id]);
-            setDailyPoll(result.updatedSurveyForStats); // Update daily poll with new stats
-          } else {
             setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: updatedInteractionData[currentSurvey.id] }));
             setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? result.updatedSurveyForStats : card));
-          }
         }
       }
       return result;
@@ -183,30 +157,6 @@ export default function HomePage() {
       console.error("Error in processCardInteraction (page):", error);
       return { updatedSurveyForStats: currentSurvey, interactionProcessed: false };
     }
-  };
-
-  const handleDailyPollAnswerSubmission = async (submittedAnswer?: any) => {
-    if (!dailyPoll || !dailyPoll.questions || dailyPoll.questions.length === 0) return;
-    const currentQuestion = dailyPoll.questions[0];
-
-    if (submittedAnswer === undefined) {
-      await processCardInteraction(dailyPoll, currentQuestion, 'skip', undefined, true);
-      setStatsForDailyPoll(null);
-      setUserInitialSelectionForDailyPoll(undefined);
-      // Daily poll doesn't "proceed" in the same way, it just shows stats or resets
-      return;
-    }
-    const { updatedSurveyForStats } = await processCardInteraction(dailyPoll, currentQuestion, 'answer', submittedAnswer, true);
-    setStatsForDailyPoll(updatedSurveyForStats);
-    setUserInitialSelectionForDailyPoll(submittedAnswer);
-  };
-
-  const handleDailyPollSkip = async () => {
-    if (!dailyPoll || !dailyPoll.questions || dailyPoll.questions.length === 0) return;
-    const currentQuestion = dailyPoll.questions[0];
-    await processCardInteraction(dailyPoll, currentQuestion, 'skip', undefined, true);
-    setStatsForDailyPoll(null);
-    setUserInitialSelectionForDailyPoll(undefined);
   };
   
   const handleCardAnswerSubmission = async (submittedAnswer?: any) => {
@@ -264,9 +214,8 @@ export default function HomePage() {
   };
   
   const resetCardView = async () => {
-    setIsRefreshingCards(true);
+    // isRefreshingCards is set within fetchSurveyData
     await fetchSurveyData(true); 
-    // No need to set isRefreshingCards to false here, fetchSurveyData's finally block handles it
   };
 
   const handleFilterChange = (value: string) => {
@@ -280,18 +229,22 @@ export default function HomePage() {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
   
-  const renderStatsCard = (surveyForStats: Survey, initialSelection?: string, onNext?: () => void, cardTitlePrefix: string = "") => {
+  const renderStatsCard = (surveyForStats: Survey, initialSelection?: string, onNext?: () => void) => {
     const questionText = surveyForStats.questions?.[0]?.text || "Survey Question";
     const totalResponses = surveyForStats.responses || 0;
     const totalSkips = surveyForStats.skipCount || 0;
     const totalInteractions = totalResponses + totalSkips;
     const currentOptionCounts = surveyForStats.optionCounts || {};
     const originalOptions = surveyForStats.questions?.[0]?.options || [];
+    const cardTitle = surveyForStats.isDailyPoll 
+      ? `Results for Today's Poll: "${questionText}"`
+      : `Results for: "${questionText}"`;
+
 
     return (
         <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
           <CardHeader>
-            <CardTitle className="text-xl font-headline text-primary">{cardTitlePrefix}"{questionText}" - Results</CardTitle>
+            <CardTitle className="text-xl font-headline text-primary">{cardTitle}</CardTitle>
             <CardDescription>Total Interactions: {totalInteractions}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -321,52 +274,13 @@ export default function HomePage() {
             <p className="text-sm pt-2"><strong>Skips:</strong> {totalSkips}</p>
           </CardContent>
           <CardFooter>
-            <Button onClick={onNext || (() => setStatsForDailyPoll(null))} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
-              {onNext ? "Next Card" : "Close Results"} <ArrowRight className="ml-2 h-5 w-5" />
+            <Button onClick={onNext} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+              Next Card <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </CardFooter>
         </Card>
     );
   };
-
-  const renderDailyPollSection = () => {
-    if (isLoadingDailyPoll) {
-        return <div className="text-center my-6"><Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" /> <p className="text-muted-foreground">Loading Today's Poll...</p></div>;
-    }
-    if (!dailyPoll || !dailyPoll.questions || dailyPoll.questions.length === 0) {
-        return <div className="text-center my-6 p-4 bg-muted/50 rounded-lg"><p className="text-muted-foreground">Today's poll isn't available right now. Check back later!</p></div>;
-    }
-    const dailyPollQuestion = dailyPoll.questions[0];
-
-    if (statsForDailyPoll) {
-        return renderStatsCard(statsForDailyPoll, userInitialSelectionForDailyPoll, () => { setStatsForDailyPoll(null); setUserInitialSelectionForDailyPoll(undefined); }, "Today's Poll: ");
-    }
-    
-    return (
-      <div className="mb-8 p-4 border border-dashed border-accent/50 rounded-lg bg-accent/5 shadow-sm">
-        <h2 className="text-xl font-semibold text-center mb-3 text-accent font-headline flex items-center justify-center gap-2">
-          <Star className="h-5 w-5" /> Today's Poll <Star className="h-5 w-5" />
-        </h2>
-        <div className="w-full max-w-xs sm:max-w-sm mx-auto">
-           {dailyPoll.description && (
-            <div className="text-center mb-2">
-              <p className="text-md font-medium text-primary">{dailyPoll.description}</p>
-            </div>
-          )}
-          <SurveyCard
-            question={dailyPollQuestion}
-            questionNumber={1}
-            totalQuestions={1}
-            onNext={handleDailyPollAnswerSubmission}
-            onSkip={handleDailyPollSkip}
-            isLastQuestion={true}
-            initialAnswer={userDailyPollInteraction && !userDailyPollInteraction.isSkipped ? userDailyPollInteraction.answerValue : undefined}
-          />
-        </div>
-      </div>
-    );
-  };
-
 
   const renderRegularCardsContent = () => {
     if (isLoading && user && publicCards.length === 0 && !isRefreshingCards) {
@@ -387,10 +301,11 @@ export default function HomePage() {
     );
 
     if (showEmptyOrAllViewedState) {
-      if (publicCards.length === 0 && !isLoadingDailyPoll) { // Ensure daily poll isn't also loading
+      if (publicCards.length === 0 && !isLoading) { 
           emptyStateTitle = "No Public Cards Yet!";
           emptyStateDescription = "Check back later for engaging public survey cards, or create your own.";
-          showRefreshButtonInEmptyState = false; 
+          showRefreshButtonInEmptyState = true;
+          refreshButtonText = "Check for New Cards";
       } else if (displayedCards.length === 0 && publicCards.length > 0) { 
           if (selectedFilter === 'not-responded') {
             emptyStateTitle = "All New Cards Viewed!";
@@ -456,7 +371,7 @@ export default function HomePage() {
 
     return (
         <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6 mt-3">
-          {currentSurvey.description && (
+          {currentSurvey.description && !currentSurvey.isDailyPoll && ( // Only show description if not daily poll (poll question is in SurveyCard title)
             <div className="text-center">
               <p className="text-md font-medium text-primary">{currentSurvey.description}</p>
             </div>
@@ -468,7 +383,8 @@ export default function HomePage() {
             onNext={handleCardAnswerSubmission} 
             onSkip={handleCardSkip}         
             isLastQuestion={currentCardIndex === displayedCards.length - 1}
-            initialAnswer={currentUserInitialAnswerForCard} 
+            initialAnswer={currentUserInitialAnswerForCard}
+            isDailyPoll={currentSurvey.isDailyPoll} 
           />
           {selectedFilter === 'responded' && !statsForCard && (
              <Button onClick={proceedToNextCard} className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground">
@@ -482,9 +398,7 @@ export default function HomePage() {
   return (
     <div className="flex flex-col items-center justify-start flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
       
-      {renderDailyPollSection()}
-
-      <div className="w-full max-w-xs sm:max-w-sm mx-auto mb-3">
+      <div className="w-full max-w-xs sm:max-w-sm mx-auto mb-6"> {/* Increased mb slightly */}
         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="not-responded">New</TabsTrigger>

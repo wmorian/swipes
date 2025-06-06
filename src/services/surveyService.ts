@@ -44,7 +44,7 @@ export const surveyService = {
       where('privacy', '==', 'Public'),
       where('surveyType', '==', 'single-card'),
       where('status', '==', 'Active'),
-      where('isDailyPoll', '!=', true), // Exclude daily poll from regular feed
+      // Removed: where('isDailyPoll', '!=', true), // Daily poll will now be included
       orderBy('createdAt', 'desc'),
     ];
     const surveySnapshot = await getDocs(query(surveysCol, ...surveyQueryConstraints));
@@ -255,11 +255,12 @@ export const surveyService = {
       pollContent.options.forEach(opt => optionCounts[opt] = 0);
 
       const newPollData: Omit<Survey, 'id' | 'createdAt' | 'updatedAt'> & { createdAt: FieldValue, updatedAt: FieldValue } = {
-        title: "Today's Poll",
+        title: "Today's Poll", // This title is used if survey.description is not present for the card.
+        description: pollContent.questionText, // Use question as description for card UI.
         surveyType: 'single-card',
         questions: [{
           id: `dp_q_${Date.now()}`,
-          text: pollContent.questionText,
+          text: pollContent.questionText, // Also store it in questions array.
           type: 'multiple-choice',
           options: pollContent.options,
         }],
