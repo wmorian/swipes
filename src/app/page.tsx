@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import SurveyCard from '@/components/survey/SurveyCard';
 import type { Survey, Question, UserSurveyAnswer } from '@/types';
 import { useAuth } from '@/context/AuthContext'; 
@@ -41,7 +42,7 @@ export default function HomePage() {
   const [userCardInteractions, setUserCardInteractions] = useState<Record<string, UserSurveyAnswer & { docId: string }>>({});
   const [selectedFilter, setSelectedFilter] = useState<FilterType>('not-responded');
   const prevSelectedFilterRef = useRef<FilterType>(selectedFilter);
-  const [filterSortControlsVisible, setFilterSortControlsVisible] = useState(false);
+  const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
 
   const fetchSurveyData = async () => {
     if (!user) { 
@@ -205,7 +206,6 @@ export default function HomePage() {
           if (currentAnswerValue && typeof currentAnswerValue === 'string' && currentSurvey.optionCounts?.hasOwnProperty(currentAnswerValue)) {
             finalSurveyUpdates[`optionCounts.${currentAnswerValue}`] = increment(1);
           }
-          // No change to total responses if only answer value changed
           actualSurveyStatChangesMade = true; 
         }
       }
@@ -238,7 +238,7 @@ export default function HomePage() {
       
       setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocId! }}));
       
-      if (actualSurveyStatChangesMade) { // Only fetch if actual stats changed
+      if (actualSurveyStatChangesMade) { 
         const updatedSurveyDoc = await getDoc(surveyRef);
         if (updatedSurveyDoc.exists()) {
             const data = updatedSurveyDoc.data();
@@ -267,15 +267,13 @@ export default function HomePage() {
       return;
     }
 
-    if (submittedAnswer === undefined) { // Option was deselected
-        const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'skip'); // Treat deselection as a skip
-        setStatsForCard(null); // Go back to question view if it was deselected
+    if (submittedAnswer === undefined) { 
+        await processCardInteraction(currentSurvey, currentQuestion, 'skip'); 
+        setStatsForCard(null); 
         setUserInitialSelection(undefined);
-        // No automatic proceedToNextCard here, user stays on card but it's now "skipped" / unanswered
         return;
     }
 
-    // Option was selected or changed
     const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'answer', submittedAnswer);
     setStatsForCard(updatedSurveyForStats); 
     setUserInitialSelection(submittedAnswer);
@@ -313,11 +311,18 @@ export default function HomePage() {
 
   const handleFilterChange = (value: string) => {
     setSelectedFilter(value as FilterType);
+    setIsFilterPopoverOpen(false);
   };
 
-  const toggleFilterSortControls = () => {
-    setFilterSortControlsVisible(prev => !prev);
-  };
+  const handleTopicFilterClick = () => {
+    console.log('Topic filter clicked - coming soon!');
+    setIsFilterPopoverOpen(false);
+  }
+
+  const handleSortClick = () => {
+    console.log('Sort clicked - coming soon!');
+    setIsFilterPopoverOpen(false);
+  }
 
 
   if (authLoading) {
@@ -330,202 +335,196 @@ export default function HomePage() {
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
-  // Shared Filter/Sort Controls Area
-  const filterSortControls = (
-    <div className="w-full max-w-xs sm:max-w-sm mx-auto mb-3 space-y-2">
-      <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="not-responded">New</TabsTrigger>
-          <TabsTrigger value="responded">Answered</TabsTrigger>
-          <TabsTrigger value="skipped">Skipped</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" className="flex-grow" onClick={() => console.log('Topic filter clicked - coming soon!')}>
+  const filterSortControlsPopoverContent = (
+    <div className="p-4 space-y-4">
+      <div>
+        <h4 className="text-sm font-medium mb-2 text-foreground">Filter By Status</h4>
+        <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="not-responded">New</TabsTrigger>
+            <TabsTrigger value="responded">Answered</TabsTrigger>
+            <TabsTrigger value="skipped">Skipped</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+       <div>
+        <h4 className="text-sm font-medium mb-1 text-foreground">Filter By Topic</h4>
+        <Button variant="outline" className="w-full justify-start" onClick={handleTopicFilterClick}>
           <Filter className="mr-2 h-4 w-4" /> Topics: All
         </Button>
-        <Button variant="outline" className="flex-grow" onClick={() => console.log('Sort clicked - coming soon!')}>
+      </div>
+      <div>
+        <h4 className="text-sm font-medium mb-1 text-foreground">Sort By</h4>
+        <Button variant="outline" className="w-full justify-start" onClick={handleSortClick}>
           <ArrowUpDown className="mr-2 h-4 w-4" /> Sort: Newest
         </Button>
       </div>
     </div>
   );
 
-  if (statsForCard) {
-    const cardToDisplayStats = statsForCard;
-    const questionText = cardToDisplayStats.questions?.[0]?.text || "Survey Question";
-    const totalResponses = cardToDisplayStats.responses || 0;
-    const totalSkips = cardToDisplayStats.skipCount || 0;
-    const totalInteractions = totalResponses + totalSkips;
-    const currentOptionCounts = cardToDisplayStats.optionCounts || {};
+  const renderPageContent = () => {
+    if (statsForCard) {
+      const cardToDisplayStats = statsForCard;
+      const questionText = cardToDisplayStats.questions?.[0]?.text || "Survey Question";
+      const totalResponses = cardToDisplayStats.responses || 0;
+      const totalSkips = cardToDisplayStats.skipCount || 0;
+      const totalInteractions = totalResponses + totalSkips;
+      const currentOptionCounts = cardToDisplayStats.optionCounts || {};
 
-    return (
-      <div className="flex flex-col items-center justify-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-        <Button 
-          variant="outline" 
-          onClick={toggleFilterSortControls} 
-          className="w-full max-w-xs sm:max-w-sm mx-auto mb-2"
-        >
-          <SlidersHorizontal className="mr-2 h-4 w-4" />
-          {filterSortControlsVisible ? 'Hide' : 'Show'} Filters & Sort
-        </Button>
-        {filterSortControlsVisible && filterSortControls}
-        
-        <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
-          <CardHeader>
-            <CardTitle className="text-xl font-headline text-primary">"{questionText}" - Results</CardTitle>
-            <CardDescription>Total Interactions: {totalInteractions}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {Object.keys(currentOptionCounts).length > 0 ? (
-              Object.entries(currentOptionCounts).map(([option, count]) => {
-                const numericCount = Number(count); 
-                const percentage = totalResponses > 0 && !isNaN(numericCount) ? ((numericCount / totalResponses) * 100).toFixed(1) : "0.0";
-                const isSelectedOption = option === userInitialSelection;
-                return (
-                  <div key={option} className={`text-sm p-3 rounded-md border ${isSelectedOption ? 'bg-accent/10 border-accent shadow-md' : 'bg-muted/50 border-border'}`}>
-                    <div className="flex justify-between items-center mb-1">
-                        <span className={`font-medium ${isSelectedOption ? 'text-foreground' : 'text-foreground'}`}>{option}</span>
-                        <span className={`text-xs ${isSelectedOption ? 'text-foreground/80' : 'text-muted-foreground'}`}>
-                            {isNaN(numericCount) ? 'N/A' : numericCount} vote{numericCount === 1 ? '' : 's'} ({percentage}%)
-                        </span>
+      return (
+          <Card className="w-full max-w-xs sm:max-w-sm shadow-xl mt-3">
+            <CardHeader>
+              <CardTitle className="text-xl font-headline text-primary">"{questionText}" - Results</CardTitle>
+              <CardDescription>Total Interactions: {totalInteractions}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {Object.keys(currentOptionCounts).length > 0 ? (
+                Object.entries(currentOptionCounts).map(([option, count]) => {
+                  const numericCount = Number(count); 
+                  const percentage = totalResponses > 0 && !isNaN(numericCount) ? ((numericCount / totalResponses) * 100).toFixed(1) : "0.0";
+                  const isSelectedOption = option === userInitialSelection;
+                  return (
+                    <div key={option} className={`text-sm p-3 rounded-md border ${isSelectedOption ? 'bg-accent/10 border-accent shadow-md' : 'bg-muted/50 border-border'}`}>
+                      <div className="flex justify-between items-center mb-1">
+                          <span className={`font-medium ${isSelectedOption ? 'text-foreground' : 'text-foreground'}`}>{option}</span>
+                          <span className={`text-xs ${isSelectedOption ? 'text-foreground/80' : 'text-muted-foreground'}`}>
+                              {isNaN(numericCount) ? 'N/A' : numericCount} vote{numericCount === 1 ? '' : 's'} ({percentage}%)
+                          </span>
+                      </div>
+                      <div className="w-full bg-background rounded-full h-2.5">
+                        <div className={`${isSelectedOption ? 'bg-accent' : 'bg-primary'} h-2.5 rounded-full`} style={{ width: `${totalResponses > 0 && !isNaN(numericCount) ? (numericCount / totalResponses) * 100 : 0}%` }}></div>
+                      </div>
                     </div>
-                    <div className="w-full bg-background rounded-full h-2.5">
-                      <div className={`${isSelectedOption ? 'bg-accent' : 'bg-primary'} h-2.5 rounded-full`} style={{ width: `${totalResponses > 0 && !isNaN(numericCount) ? (numericCount / totalResponses) * 100 : 0}%` }}></div>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <p className="text-sm text-muted-foreground">No responses yet for these options.</p>
-            )}
-             <p className="text-sm pt-2"><strong>Skips:</strong> {totalSkips}</p>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={proceedToNextCard} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
-              Next Card <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
-
-  let emptyStateTitle = "You've Seen All Cards!";
-  let emptyStateDescription = "Thanks for participating! Check back later for new cards or try another filter.";
-  let showViewAgainCta = true;
-  
-  const showEmptyOrAllViewedState = !isLoading && user && (
-    (displayedCards.length === 0) || 
-    (currentCardIndex >= displayedCards.length && displayedCards.length > 0) 
-  );
-
-  if (showEmptyOrAllViewedState) {
-    if (publicCards.length === 0) {
-        emptyStateTitle = "No Public Cards Yet!";
-        emptyStateDescription = "Check back later for engaging public survey cards, or create your own.";
-        showViewAgainCta = false;
-    } else if (displayedCards.length === 0 && publicCards.length > 0) {
-        if (selectedFilter === 'not-responded') {
-          emptyStateTitle = "All New Cards Viewed!";
-          emptyStateDescription = "You've seen all the brand new cards. Try another filter or check back later!";
-        } else if (selectedFilter === 'responded') {
-          emptyStateTitle = "No Answered Cards Yet";
-          emptyStateDescription = "You haven't answered any survey cards. Switch to 'New' to get started!";
-        } else if (selectedFilter === 'skipped') {
-          emptyStateTitle = "No Skipped Cards Yet";
-          emptyStateDescription = "You haven't skipped any cards. Skipped cards will appear here.";
-        }
-        showViewAgainCta = false;
-    } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) {
-        emptyStateTitle = `All ${selectedFilter === 'responded' ? 'Answered' : selectedFilter === 'skipped' ? 'Skipped' : 'New'} Cards Viewed!`;
-        emptyStateDescription = "You've gone through all available cards for this filter.";
-        showViewAgainCta = true;
+                  );
+                })
+              ) : (
+                <p className="text-sm text-muted-foreground">No responses yet for these options.</p>
+              )}
+              <p className="text-sm pt-2"><strong>Skips:</strong> {totalSkips}</p>
+            </CardContent>
+            <CardFooter>
+              <Button onClick={proceedToNextCard} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+                Next Card <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </CardFooter>
+          </Card>
+      );
     }
+
+    let emptyStateTitle = "You've Seen All Cards!";
+    let emptyStateDescription = "Thanks for participating! Check back later for new cards or try another filter.";
+    let showRefreshButton = false;
+    let refreshButtonText = "View Cards Again";
     
-    return (
-      <div className="flex flex-col items-center justify-center text-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-        <Button 
-          variant="outline" 
-          onClick={toggleFilterSortControls} 
-          className="w-full max-w-xs sm:max-w-sm mx-auto mb-2"
-        >
-          <SlidersHorizontal className="mr-2 h-4 w-4" />
-          {filterSortControlsVisible ? 'Hide' : 'Show'} Filters & Sort
-        </Button>
-        {filterSortControlsVisible && filterSortControls}
-
-        <Card className="p-6 md:p-10 shadow-xl w-full max-w-md mt-3">
-          <CardHeader>
-            <CardTitle className="text-2xl font-headline text-primary">
-              {emptyStateTitle}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-md mb-6">
-              {emptyStateDescription}
-            </CardDescription>
-            {showViewAgainCta && (
-                 <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
-                    <RefreshCw className="mr-2 h-4 w-4" /> View Cards Again
-                </Button>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+    const showEmptyOrAllViewedState = !isLoading && user && (
+      (displayedCards.length === 0) || 
+      (currentCardIndex >= displayedCards.length && displayedCards.length > 0) 
     );
-  }
 
-  const currentSurvey = displayedCards[currentCardIndex];
-  const currentQuestion = currentSurvey?.questions?.[0]; 
-  const currentUserInitialAnswerForCard = userCardInteractions[currentSurvey?.id]?.isSkipped 
-                                          ? null 
-                                          : userCardInteractions[currentSurvey?.id]?.answerValue;
+    if (showEmptyOrAllViewedState) {
+      if (publicCards.length === 0) {
+          emptyStateTitle = "No Public Cards Yet!";
+          emptyStateDescription = "Check back later for engaging public survey cards, or create your own.";
+          showRefreshButton = false; 
+      } else if (displayedCards.length === 0 && publicCards.length > 0) { 
+          if (selectedFilter === 'not-responded') {
+            emptyStateTitle = "All New Cards Viewed!";
+            emptyStateDescription = "You've seen all available new cards. You can check for more or try another filter.";
+            showRefreshButton = true;
+            refreshButtonText = "Check for New Cards";
+          } else if (selectedFilter === 'responded') {
+            emptyStateTitle = "No Answered Cards Yet";
+            emptyStateDescription = "You haven't answered any survey cards. Switch to 'New' to get started!";
+            showRefreshButton = false;
+          } else if (selectedFilter === 'skipped') {
+            emptyStateTitle = "No Skipped Cards Yet";
+            emptyStateDescription = "You haven't skipped any cards. Skipped cards will appear here.";
+            showRefreshButton = false;
+          }
+      } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) { 
+          let filterName = "Cards";
+          if (selectedFilter === 'not-responded') filterName = "New Cards";
+          else if (selectedFilter === 'responded') filterName = "Answered Cards";
+          else if (selectedFilter === 'skipped') filterName = "Skipped Cards";
+          
+          emptyStateTitle = `All ${filterName.replace(" Cards", "")} Cards Viewed!`;
+          emptyStateDescription = "You've gone through all available cards for this filter.";
+          showRefreshButton = true;
+          refreshButtonText = `Refresh ${filterName}`;
+      }
+      
+      return (
+          <Card className="p-6 md:p-10 shadow-xl w-full max-w-md mt-3">
+            <CardHeader>
+              <CardTitle className="text-2xl font-headline text-primary">
+                {emptyStateTitle}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription className="text-md mb-6">
+                {emptyStateDescription}
+              </CardDescription>
+              {showRefreshButton && (
+                   <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
+                      <RefreshCw className="mr-2 h-4 w-4" /> {refreshButtonText}
+                  </Button>
+              )}
+            </CardContent>
+          </Card>
+      );
+    }
 
-  if (!currentSurvey || !currentQuestion) { 
+    const currentSurvey = displayedCards[currentCardIndex];
+    const currentQuestion = currentSurvey?.questions?.[0]; 
+    const currentUserInitialAnswerForCard = userCardInteractions[currentSurvey?.id]?.isSkipped 
+                                            ? null 
+                                            : userCardInteractions[currentSurvey?.id]?.answerValue;
+
+    if (!currentSurvey || !currentQuestion) { 
+      return <p className="text-muted-foreground mt-3">Preparing card...</p>;
+    }
+
     return (
-      <div className="flex flex-col items-center justify-center text-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-         <Button 
-          variant="outline" 
-          onClick={toggleFilterSortControls} 
-          className="w-full max-w-xs sm:max-w-sm mx-auto mb-2"
-        >
-          <SlidersHorizontal className="mr-2 h-4 w-4" />
-          {filterSortControlsVisible ? 'Hide' : 'Show'} Filters & Sort
-        </Button>
-        {filterSortControlsVisible && filterSortControls}
-        <p className="text-muted-foreground mt-3">Preparing card...</p>
-      </div>
+        <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6 mt-3">
+          {currentSurvey.description && (
+            <div className="text-center">
+              <p className="text-md font-medium text-primary">{currentSurvey.description}</p>
+            </div>
+          )}
+          <SurveyCard
+            question={currentQuestion}
+            questionNumber={currentCardIndex + 1} 
+            totalQuestions={displayedCards.length}
+            onNext={handleCardAnswerSubmission} 
+            onSkip={handleCardSkip}         
+            isLastQuestion={currentCardIndex === displayedCards.length - 1}
+            initialAnswer={currentUserInitialAnswerForCard} 
+          />
+        </div>
     );
-  }
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
-       <Button 
-        variant="outline" 
-        onClick={toggleFilterSortControls} 
-        className="w-full max-w-xs sm:max-w-sm mx-auto mb-2"
-      >
-        <SlidersHorizontal className="mr-2 h-4 w-4" />
-        {filterSortControlsVisible ? 'Hide' : 'Show'} Filters & Sort
-      </Button>
-      {filterSortControlsVisible && filterSortControls}
+    <div className="flex flex-col items-center justify-start flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
+      <div className="w-full max-w-xs sm:max-w-sm mx-auto mb-3">
+        <Popover open={isFilterPopoverOpen} onOpenChange={setIsFilterPopoverOpen}>
+          <PopoverTrigger asChild>
+            <Button 
+              variant="outline" 
+              className="w-full"
+            >
+              <SlidersHorizontal className="mr-2 h-4 w-4" />
+              Filter & Sort
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[calc(100vw-2rem)] max-w-xs sm:max-w-sm p-0" align="start">
+            {filterSortControlsPopoverContent}
+          </PopoverContent>
+        </Popover>
+      </div>
       
-      <div className="w-full max-w-xs sm:max-w-sm space-y-4 sm:space-y-6 mt-3">
-        {currentSurvey.description && (
-          <div className="text-center">
-            <p className="text-md font-medium text-primary">{currentSurvey.description}</p>
-          </div>
-        )}
-        <SurveyCard
-          question={currentQuestion}
-          questionNumber={currentCardIndex + 1} 
-          totalQuestions={displayedCards.length}
-          onNext={handleCardAnswerSubmission} 
-          onSkip={handleCardSkip}         
-          isLastQuestion={currentCardIndex === displayedCards.length - 1}
-          initialAnswer={currentUserInitialAnswerForCard} 
-        />
+      <div className="flex flex-col items-center justify-center flex-grow w-full">
+        {renderPageContent()}
       </div>
     </div>
   );
