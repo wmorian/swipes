@@ -8,97 +8,95 @@ body {
 
 @layer base {
   :root {
-    --background: 231 43% 94%; /* Very light blue (#E8EAF6) */
-    --foreground: 231 48% 18%; /* Darker shade of primary for text */
+    --background: 40 56% 94%; /* Warm Beige (#FDF8F0) */
+    --foreground: 85 25% 25%; /* Dark Olive Green (#334030) */
 
-    --card: 0 0% 100%; /* White */
-    --card-foreground: 231 48% 18%;
+    --card: 40 30% 98%; /* Off-white (#FCFAF7) */
+    --card-foreground: 85 25% 25%; /* Dark Olive Green */
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 231 48% 18%;
+    --popover: 40 30% 98%; /* Off-white */
+    --popover-foreground: 85 25% 25%; /* Dark Olive Green */
 
-    --primary: 231 48% 48%; /* Deep blue (#3F51B5) */
-    --primary-foreground: 231 43% 96%; /* Lighter for text on primary */
+    --primary: 120 39% 40%; /* Forest Green (#3D7A3D) */
+    --primary-foreground: 40 50% 95%; /* Light Beige (#FAF6F0) */
 
-    --secondary: 231 48% 70%; /* Lighter shade of primary */
-    --secondary-foreground: 231 48% 18%;
+    --secondary: 90 30% 65%; /* Soft Sage (#8CB08C) */
+    --secondary-foreground: 85 25% 25%; /* Dark Olive Green */
 
-    --muted: 231 43% 88%; /* Slightly darker than background */
-    --muted-foreground: 231 48% 35%;
+    --muted: 40 40% 90%; /* Lightest Beige (#F5F2ED) */
+    --muted-foreground: 85 25% 35%; /* Slightly lighter Dark Olive (#42543F) */
 
-    --accent: 261 40% 58%; /* Purple (#7E57C2) */
-    --accent-foreground: 0 0% 100%; /* White for text on accent */
+    --accent: 20 60% 55%; /* Terracotta (#D97D54) */
+    --accent-foreground: 30 30% 98%; /* Very Light Beige (#FCFBF9) */
 
-    --destructive: 0 72% 51%; /* Adjusted default red for better contrast */
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%; /* Default Red, adjust if needed for theme */
+    --destructive-foreground: 0 0% 98%; /* Default Light for destructive */
 
-    --border: 231 48% 80%; /* Mid-tone for borders */
-    --input: 231 43% 88%; /* Similar to muted for input backgrounds */
-    --ring: 231 48% 48%; /* Primary for focus rings */
+    --border: 30 30% 70%; /* Light Brown (#C9B8A6) */
+    --input: 40 40% 90%; /* Lightest Beige (#F5F2ED) */
+    --ring: 120 39% 40%; /* Forest Green (#3D7A3D) */
 
-    --chart-1: 231 48% 48%;
-    --chart-2: 261 40% 58%;
-    --chart-3: 231 48% 60%;
-    --chart-4: 261 40% 70%;
-    --chart-5: 231 48% 35%;
+    --chart-1: 120 39% 40%; /* Forest Green */
+    --chart-2: 20 60% 55%; /* Terracotta */
+    --chart-3: 90 30% 65%; /* Soft Sage */
+    --chart-4: 20 60% 70%; /* Lighter Terracotta */
+    --chart-5: 120 39% 55%; /* Lighter Forest Green */
     
     --radius: 0.5rem;
 
-    /* Sidebar specific colors, can be same as main if no distinct sidebar theme */
-    --sidebar-background: 231 43% 92%;
-    --sidebar-foreground: 231 48% 22%;
-    --sidebar-primary: 231 48% 48%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 261 40% 58%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 231 43% 85%;
-    --sidebar-ring: 231 48% 48%;
+    --sidebar-background: 40 50% 92%; /* Very Light Beige (#F7F2EB) */
+    --sidebar-foreground: 85 25% 22%; /* Dark Olive (#2E382B) */
+    --sidebar-primary: 120 39% 40%; /* Forest Green */
+    --sidebar-primary-foreground: 40 50% 95%; /* Light Beige */
+    --sidebar-accent: 20 60% 55%; /* Terracotta */
+    --sidebar-accent-foreground: 30 30% 98%; /* Very Light Beige */
+    --sidebar-border: 30 30% 80%; /* Light Brown (#D9CDBF) */
+    --sidebar-ring: 120 39% 40%; /* Forest Green */
   }
 
   .dark {
-    /* Define dark theme based on the new palette, inversing or darkening appropriately */
-    --background: 231 20% 12%; 
-    --foreground: 231 43% 94%;
+    --background: 40 10% 15%; /* Dark Warm Brown/Gray (#2B2621) */
+    --foreground: 40 40% 90%; /* Light Beige (#F5F2ED) */
 
-    --card: 231 20% 15%;
-    --card-foreground: 231 43% 94%;
+    --card: 40 10% 18%; /* Slightly Lighter Dark Brown (#332E29) */
+    --card-foreground: 40 40% 90%; /* Light Beige */
 
-    --popover: 231 20% 10%;
-    --popover-foreground: 231 43% 94%;
+    --popover: 40 10% 12%; /* Very Dark Brown (#241F1A) */
+    --popover-foreground: 40 40% 90%; /* Light Beige */
 
-    --primary: 231 48% 55%; 
-    --primary-foreground: 231 48% 15%;
+    --primary: 120 30% 55%; /* Muted Forest Green (#6BA36B) */
+    --primary-foreground: 120 20% 15%; /* Very Dark Green (#243324) */
 
-    --secondary: 231 48% 30%;
-    --secondary-foreground: 231 43% 94%;
+    --secondary: 90 20% 40%; /* Dark Sage (#576B57) */
+    --secondary-foreground: 40 40% 90%; /* Light Beige */
 
-    --muted: 231 20% 20%;
-    --muted-foreground: 231 43% 70%;
+    --muted: 40 10% 25%; /* Medium Dark Brown (#453F38) */
+    --muted-foreground: 40 30% 70%; /* Grayish Beige (#C9B8A6) */
 
-    --accent: 261 40% 65%;
-    --accent-foreground: 231 20% 10%;
+    --accent: 20 50% 65%; /* Muted Terracotta (#E39C7B) */
+    --accent-foreground: 20 15% 10%; /* Very Dark Brown (#1C1715) */
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 50% 45%; /* Darker, Muted Red */
+    --destructive-foreground: 0 0% 95%; /* Off-white */
 
-    --border: 231 20% 25%;
-    --input: 231 20% 22%;
-    --ring: 231 48% 55%;
+    --border: 40 10% 30%; /* Dark Brown Border (#524A41) */
+    --input: 40 10% 28%; /* Slightly lighter than border for input (#4F463E) */
+    --ring: 120 30% 55%; /* Muted Forest Green */
     
-    --chart-1: 231 48% 55%;
-    --chart-2: 261 40% 65%;
-    --chart-3: 231 48% 45%;
-    --chart-4: 261 40% 55%;
-    --chart-5: 231 48% 70%;
+    --chart-1: 120 30% 55%; /* Muted Forest Green */
+    --chart-2: 20 50% 65%; /* Muted Terracotta */
+    --chart-3: 90 20% 40%; /* Dark Sage */
+    --chart-4: 20 50% 50%; /* Darker Terracotta */
+    --chart-5: 120 30% 35%; /* Darkest Green */
 
-    --sidebar-background: 231 20% 10%;
-    --sidebar-foreground: 231 43% 90%;
-    --sidebar-primary: 231 48% 55%;
-    --sidebar-primary-foreground: 231 20% 10%;
-    --sidebar-accent: 261 40% 65%;
-    --sidebar-accent-foreground: 231 20% 10%;
-    --sidebar-border: 231 20% 20%;
-    --sidebar-ring: 231 48% 55%;
+    --sidebar-background: 40 10% 12%; /* Very Dark Warm Brown (#241F1A) */
+    --sidebar-foreground: 40 40% 85%; /* Slightly dimmer Light Beige (#EBE6DE) */
+    --sidebar-primary: 120 30% 55%; /* Muted Forest Green */
+    --sidebar-primary-foreground: 120 20% 15%; /* Very Dark Green */
+    --sidebar-accent: 20 50% 65%; /* Muted Terracotta */
+    --sidebar-accent-foreground: 20 15% 10%; /* Very Dark Brown */
+    --sidebar-border: 40 10% 25%; /* Medium Dark Brown border (#453F38) */
+    --sidebar-ring: 120 30% 55%; /* Muted Forest Green */
   }
 }
 
