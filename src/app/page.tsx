@@ -236,6 +236,7 @@ export default function HomePage() {
       
       setUserCardInteractions(prev => ({ ...prev, [currentSurvey.id]: { ...newInteractionForLocalState, docId: newDocId! }}));
       
+      // Always fetch updated survey if it's an answer or if backend stats were definitely changed
       if (interactionType === 'answer' || actualSurveyStatChangesMade) {
         const updatedSurveyDoc = await getDoc(surveyRef);
         if (updatedSurveyDoc.exists()) {
@@ -245,6 +246,7 @@ export default function HomePage() {
               createdAt: (data.createdAt as Timestamp)?.toDate(),
               updatedAt: (data.updatedAt as Timestamp)?.toDate(),
             } as Survey;
+            // Update the card in publicCards list for consistency if other parts of UI rely on it.
             setPublicCards(prevCards => prevCards.map(card => card.id === currentSurvey.id ? updatedSurveyForStats : card));
         }
       }
@@ -255,7 +257,7 @@ export default function HomePage() {
     }
   };
 
-  // Called when an option is selected in SurveyCard
+  // Called when an option is selected/deselected in SurveyCard
   const handleCardAnswerSubmission = async (submittedAnswer?: any) => {
     if (displayedCards.length === 0 || !displayedCards[currentCardIndex]) return;
     const currentSurvey = displayedCards[currentCardIndex];
@@ -266,33 +268,20 @@ export default function HomePage() {
       return;
     }
 
-    if (submittedAnswer === undefined) {
-        // This means an option was deselected in SurveyCard
+    if (submittedAnswer === undefined) { // Option deselected
         setStatsForCard(null); 
         setUserInitialSelection(undefined);
-        // Optionally, if a user interaction existed, we might need to "undo" it
-        // or mark it as skipped if that's the desired behavior for deselection.
-        // For now, just clear stats view.
-        // If we want deselection to remove the vote, processCardInteraction might need another mode.
-        // For now, let's assume deselection just brings back to question mode without altering backend.
-        // A more robust deselection might involve updating the backend if an answer was previously recorded.
-        // This can be revisited. Let's see the impact first.
-        const existingInteraction = userCardInteractions[currentSurvey.id];
-        if (existingInteraction && !existingInteraction.isSkipped) {
-            // If there was a previous answer, and user deselects, what should happen?
-            // Option 1: Revert to "not answered" - this means decrementing counts.
-            // Option 2: Consider it a "skip" now.
-            // Option 3: Do nothing to backend, just UI change. (Current simplest path for this step)
-            // Let's stick with UI change for now (clear statsForCard).
-            // If this needs to update backend, processCardInteraction needs a "clear_answer" type.
-        }
+        // If an answer was previously recorded and now deselected,
+        // we might need to update backend to reflect "not answered" or a "skip".
+        // For now, just clearing stats view. This behavior can be revisited if needed.
+        // To fully revert a vote, processCardInteraction would need a specific mode.
         return;
     }
 
     // If an answer is submitted (not undefined)
     const { updatedSurveyForStats } = await processCardInteraction(currentSurvey, currentQuestion, 'answer', submittedAnswer);
     setStatsForCard(updatedSurveyForStats); 
-    setUserInitialSelection(submittedAnswer);
+    setUserInitialSelection(submittedAnswer); // Set user's current choice for highlighting in stats
   };
 
   const handleCardSkip = async () => {
@@ -321,6 +310,7 @@ export default function HomePage() {
   };
   
   const resetCardView = () => {
+    // This will re-fetch all data and reset filters to default, effectively restarting the card flow.
     fetchSurveyData(); 
   };
 
@@ -333,15 +323,16 @@ export default function HomePage() {
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading authentication...</p></div>;
   }
   if (!user && !authLoading) {
+    // This should ideally be handled by useEffect redirect, but as a fallback message.
     return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Redirecting to login...</p></div>;
   }
-  if (isLoading && user) { 
+  if (isLoading && user) { // Show loading only if user is confirmed and initial data is loading
      return <div className="flex justify-center items-center min-h-[calc(100vh-8rem)]"><p className="text-lg text-muted-foreground">Loading cards...</p></div>;
   }
   
   // STATS VIEW LOGIC
   if (statsForCard) {
-    const cardToDisplayStats = statsForCard; 
+    const cardToDisplayStats = statsForCard; // This is the survey object with latest counts
     const questionText = cardToDisplayStats.questions?.[0]?.text || "Survey Question";
     const totalResponses = cardToDisplayStats.responses || 0;
     const totalSkips = cardToDisplayStats.skipCount || 0;
@@ -371,8 +362,8 @@ export default function HomePage() {
                 return (
                   <div key={option} className={`text-sm p-3 rounded-md border ${isSelectedOption ? 'bg-accent/10 border-accent shadow-md' : 'bg-muted/50 border-border'}`}>
                     <div className="flex justify-between items-center mb-1">
-                        <span className={`font-medium ${isSelectedOption ? 'text-accent-foreground' : 'text-foreground'}`}>{option}</span>
-                        <span className={`text-xs ${isSelectedOption ? 'text-accent-foreground/80' : 'text-muted-foreground'}`}>
+                        <span className={`font-medium ${isSelectedOption ? 'text-foreground' : 'text-foreground'}`}>{option}</span>
+                        <span className={`text-xs ${isSelectedOption ? 'text-foreground/80' : 'text-muted-foreground'}`}>
                             {isNaN(numericCount) ? 'N/A' : numericCount} vote{numericCount === 1 ? '' : 's'} ({percentage}%)
                         </span>
                     </div>
@@ -400,19 +391,19 @@ export default function HomePage() {
   // EMPTY/ALL VIEWED STATE LOGIC
   let emptyStateTitle = "You've Seen All Cards!";
   let emptyStateDescription = "Thanks for participating! Check back later for new cards or try another filter.";
-  let showViewAgainCta = true; 
+  let showViewAgainCta = true; // Default to true if there are cards in this filter.
   
   const showEmptyOrAllViewedState = !isLoading && user && (
-    (displayedCards.length === 0) || 
-    (currentCardIndex >= displayedCards.length && displayedCards.length > 0)
+    (displayedCards.length === 0) || // No cards match the current filter
+    (currentCardIndex >= displayedCards.length && displayedCards.length > 0) // All cards in current filter have been passed
   );
 
   if (showEmptyOrAllViewedState) {
-    if (publicCards.length === 0) { 
+    if (publicCards.length === 0) { // No public cards in the system at all
         emptyStateTitle = "No Public Cards Yet!";
         emptyStateDescription = "Check back later for engaging public survey cards, or create your own.";
-        showViewAgainCta = false;
-    } else if (displayedCards.length === 0 && publicCards.length > 0) { 
+        showViewAgainCta = false; // No cards to view again
+    } else if (displayedCards.length === 0 && publicCards.length > 0) { // Cards exist, but not for this filter
         if (selectedFilter === 'not-responded') {
           emptyStateTitle = "All New Cards Viewed!";
           emptyStateDescription = "You've seen all the brand new cards. Try another filter or check back later!";
@@ -423,11 +414,11 @@ export default function HomePage() {
           emptyStateTitle = "No Skipped Cards Yet";
           emptyStateDescription = "You haven't skipped any cards. Skipped cards will appear here.";
         }
-        showViewAgainCta = false; 
-    } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) { 
+        showViewAgainCta = false; // "View Again" doesn't make sense if filter is empty
+    } else if (displayedCards.length > 0 && currentCardIndex >= displayedCards.length) { // All cards in this specific filter have been viewed
         emptyStateTitle = `All ${selectedFilter === 'responded' ? 'Answered' : selectedFilter === 'skipped' ? 'Skipped' : 'New'} Cards Viewed!`;
         emptyStateDescription = "You've gone through all available cards for this filter.";
-        showViewAgainCta = true; 
+        showViewAgainCta = true; // User can choose to view this filter's cards again
     }
     
     return (
@@ -459,7 +450,7 @@ export default function HomePage() {
             <CardDescription className="text-md mb-6">
               {emptyStateDescription}
             </CardDescription>
-            {showViewAgainCta && ( 
+            {showViewAgainCta && ( // Only show if there were cards in this filter to begin with
                  <Button onClick={resetCardView} variant="outline" className="mb-4 w-full sm:w-auto">
                     <RefreshCw className="mr-2 h-4 w-4" /> View Cards Again
                 </Button>
@@ -473,11 +464,14 @@ export default function HomePage() {
   // QUESTION VIEW LOGIC (when statsForCard is null)
   const currentSurvey = displayedCards[currentCardIndex];
   const currentQuestion = currentSurvey?.questions?.[0]; 
+  // For initialAnswer prop of SurveyCard, find if this user has an existing non-skipped answer for this card
   const currentUserInitialAnswerForCard = userCardInteractions[currentSurvey?.id]?.isSkipped 
-                                          ? null 
+                                          ? null // If skipped, effectively no initial answer shown as selected
                                           : userCardInteractions[currentSurvey?.id]?.answerValue;
 
   if (!currentSurvey || !currentQuestion) { 
+    // This might show briefly if displayedCards is being populated or if currentCardIndex is out of bounds unexpectedly.
+    // Or if there are no displayed cards for some reason not caught by the empty state logic.
     return (
       <div className="flex flex-col items-center justify-center text-center flex-grow pt-3 md:pt-4 pb-6 md:pb-10 px-4">
         <Tabs value={selectedFilter} onValueChange={handleFilterChange} className="w-full max-w-xs sm:max-w-sm mb-2 mx-auto">
